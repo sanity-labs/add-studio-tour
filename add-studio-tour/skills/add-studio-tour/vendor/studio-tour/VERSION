@@ -1,0 +1,11 @@
+# sanity-plugin-studio-tour — vendored with the add-studio-tour skill.
+#
+# This file is copied along with the plugin when you vendor it into a Studio
+# (Step 2), so an install can be compared against the skill's current copy to
+# detect drift. `version` is the plugin's logical version — bump it when the
+# plugin SOURCE changes (not on a reformat). `synced`, `source-commit`, and
+# `files` are stamped automatically by scripts/sync_vendor.sh.
+version: 1.6.0
+synced: 2026-06-16
+source-commit: unknown
+files: 11

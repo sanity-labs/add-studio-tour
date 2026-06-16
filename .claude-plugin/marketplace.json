@@ -1,0 +1,25 @@
+{
+  "name": "studio-tour",
+  "owner": {
+    "name": "Sanity",
+    "email": "hello@sanity.io",
+    "url": "https://www.sanity.io"
+  },
+  "metadata": {
+    "description": "Guided product tours for Sanity Studio — the add-studio-tour skill, distributed as a standalone Claude Code plugin."
+  },
+  "plugins": [
+    {
+      "name": "add-studio-tour",
+      "source": "./add-studio-tour",
+      "description": "Install and wire sanity-plugin-studio-tour into an existing Sanity Studio: vendor the plugin, add tourPlugin to chosen workspaces, patch the desk structure, author a starter tour, and verify selectors.",
+      "version": "1.0.0",
+      "repository": "https://github.com/sanity-labs/add-studio-tour",
+      "author": {
+        "name": "Sanity",
+        "email": "hello@sanity.io"
+      },
+      "skills": ["./skills/add-studio-tour"]
+    }
+  ]
+}
