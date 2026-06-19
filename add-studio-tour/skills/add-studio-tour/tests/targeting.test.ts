@@ -14,6 +14,7 @@ import {
   DEFAULT_CHROME_SELECTORS,
   mapTour,
   resolveTargetSelector,
+  workspaceScopeFilter,
 } from '../vendor/studio-tour/targeting.ts'
 
 test('resolveTargetSelector: undefined/empty → undefined', () => {
@@ -139,4 +140,19 @@ test('mapTour: neither doc nor openTool → navigateTo undefined; no target → 
   const t = mapTour({ _id: 'a', steps: [{ title: 'S' }] }, DEFAULT_CHROME_SELECTORS)
   assert.equal(t.steps[0].navigateTo, undefined)
   assert.equal(t.steps[0].element, undefined)
+})
+
+test('workspaceScopeFilter: no scope → empty (every tour shows)', () => {
+  assert.equal(workspaceScopeFilter(null), '')
+  assert.equal(workspaceScopeFilter(''), '')
+})
+
+test('workspaceScopeFilter: scoped → predicate incl. untagged/global tours', () => {
+  const f = workspaceScopeFilter('marketing')
+  assert.equal(
+    f,
+    ' && (!defined(workspaces) || count(workspaces) == 0 || $scope in workspaces)'
+  )
+  // composes into a valid-looking filter after `_type == $type`
+  assert.ok(`*[_type == $type${f}]`.startsWith('*[_type == $type && ('))
 })

@@ -76,6 +76,21 @@ export interface StudioTourConfig {
   schemaTypeName?: string
   /** Override/extend the CSS selectors used for Studio chrome targets. */
   chromeSelectors?: Record<string, string>
+  /**
+   * Central-management mode (shared dataset). Set this on each *product*
+   * workspace to a stable workspace key (e.g. the workspace `name`). Its
+   * launcher then shows only tours tagged for this key — plus untagged
+   * ("global") tours — via the `workspaces` field on the tour document. Also
+   * makes that field visible for authoring. Omit for the simple
+   * one-dataset-per-workspace model (no field, no filter — current behaviour).
+   */
+  workspaceScope?: string
+  /**
+   * Central-management mode (shared dataset). Set this `true` on the **global
+   * admin** workspace: it shows the `workspaces` tagging field and sees/manages
+   * **all** tours (no scope filter applied).
+   */
+  manageWorkspaceScopes?: boolean
 }
 
 /** Config after defaults are applied — passed to the internal components. */
@@ -84,4 +99,8 @@ export interface ResolvedTourConfig {
   fieldTargets: FieldTargetOption[]
   schemaTypeName: string
   chromeSelectors: Record<string, string>
+  /** Workspace key to filter the launcher by, or null for no filter. */
+  workspaceScope: string | null
+  /** Whether to show the `workspaces` tagging field on the tour type. */
+  showWorkspaceField: boolean
 }

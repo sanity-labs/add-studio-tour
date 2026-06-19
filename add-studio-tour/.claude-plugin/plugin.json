@@ -1,7 +1,7 @@
 {
   "name": "add-studio-tour",
   "version": "1.0.0",
-  "description": "Install and wire sanity-plugin-studio-tour into an existing Sanity Studio. Bundles a vendored copy of the plugin (studio-tour v1.6.0) so each Studio gets its own adaptable copy — no central runtime dependency.",
+  "description": "Install and wire sanity-plugin-studio-tour into an existing Sanity Studio. Bundles a vendored copy of the plugin (studio-tour v1.8.0) so each Studio gets its own adaptable copy — no central runtime dependency.",
   "author": {
     "name": "Sanity"
   },

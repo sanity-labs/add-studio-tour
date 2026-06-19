@@ -1,5 +1,4 @@
 import { definePlugin } from 'sanity'
-import { Box, Flex } from '@sanity/ui'
 import { TourProvider } from './TourProvider'
 import { TourLauncher } from './TourLauncher'
 import { TourField } from './TourField'
@@ -37,6 +36,11 @@ export const studioTourPlugin = definePlugin<StudioTourConfig | void>((config) =
     docTypes: config?.docTypes ?? [],
     fieldTargets: config?.fieldTargets ?? [],
     chromeSelectors: { ...DEFAULT_CHROME_SELECTORS, ...(config?.chromeSelectors ?? {}) },
+    workspaceScope: config?.workspaceScope ?? null,
+    // Show the tagging field on the admin workspace and on any scoped product
+    // workspace, so the shared tour type stays consistent across the dataset.
+    showWorkspaceField:
+      Boolean(config?.workspaceScope) || Boolean(config?.manageWorkspaceScopes),
   }
 
   return {
@@ -52,14 +56,24 @@ export const studioTourPlugin = definePlugin<StudioTourConfig | void>((config) =
     studio: {
       components: {
         layout: (props) => <TourProvider config={resolved}>{props.renderDefault(props)}</TourProvider>,
-        navbar: (props) => (
-          <Flex align="center">
-            <Box flex={1}>{props.renderDefault(props)}</Box>
-            <Box paddingX={2}>
-              <TourLauncher />
-            </Box>
-          </Flex>
-        ),
+        navbar: (props) => {
+          // Inject the launcher as a native top-bar action via Sanity's
+          // `__internal_actions` slot, so it renders *inside* the navbar's own
+          // themed surface — it inherits the bottom border and the perspective
+          // tone (e.g. the colour shift when a content release is active),
+          // instead of floating in an un-themed wrapper beside the navbar.
+          // NOTE: `__internal_actions` is @beta in Sanity; if it's ever removed
+          // the launcher simply won't render (no crash) — revisit then.
+          const actions = [
+            ...(props.__internal_actions ?? []),
+            {
+              name: 'studio-tour',
+              location: 'topbar' as const,
+              render: () => <TourLauncher />,
+            },
+          ]
+          return props.renderDefault({ ...props, __internal_actions: actions })
+        },
       },
     },
   }

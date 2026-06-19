@@ -121,6 +121,19 @@ export function resolveTargetSelector(
   return selectors[target]
 }
 
+/**
+ * GROQ predicate appended after `_type == $type` to restrict the launcher to the
+ * current workspace's tours when central-management scoping is on. Returns '' when
+ * unscoped (admin workspace, or the simple one-dataset-per-workspace model), so
+ * every tour of the type shows. When scoped, a tour with no `workspaces` (or an
+ * empty array) is treated as global and always shown; otherwise the workspace key
+ * must be listed. The `$scope` param is only referenced when scoped.
+ */
+export function workspaceScopeFilter(scope: string | null): string {
+  if (!scope) return ''
+  return ' && (!defined(workspaces) || count(workspaces) == 0 || $scope in workspaces)'
+}
+
 export interface RawStep {
   title?: string
   description?: string

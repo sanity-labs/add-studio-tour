@@ -2,7 +2,7 @@
 
 Guided product tours for **Sanity Studio**, packaged as a standalone [Claude Code](https://claude.com/claude-code) plugin. It installs and wires [`sanity-plugin-studio-tour`](#) into an existing Studio: vendors the plugin, adds `tourPlugin` to the chosen workspaces, patches the desk structure so the Guided Tour type is browsable, authors a starter tour, and verifies selectors against the running Studio.
 
-The plugin code ships **vendored** inside the skill (`skills/add-studio-tour/vendor/studio-tour`, currently studio-tour **v1.6.0**), so each Studio that installs the skill gets its own copy to adapt — no central runtime dependency to version or maintain.
+The plugin code ships **vendored** inside the skill (`skills/add-studio-tour/vendor/studio-tour`, currently studio-tour **v1.8.0**), so each Studio that installs the skill gets its own copy to adapt — no central runtime dependency to version or maintain.
 
 ## Install
 
