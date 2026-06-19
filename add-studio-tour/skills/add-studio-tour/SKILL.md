@@ -31,8 +31,16 @@ tourPlugin({
   docTypes: [], // doc types a step's "Open document first" may reference
   fieldTargets: [], // [{ title, field }] → authoring-dropdown options ONLY. At runtime any visible field path works (e.g. field:title, nested field:seo.metaTitle), whether or not it's listed here.
   chromeSelectors: {}, // override/extend built-in chrome selectors (see below)
+  // ── Central-management mode (shared dataset only — see "Multi-workspace") ──
+  workspaceScope: undefined, // product workspace: a stable key (e.g. workspace name). Launcher shows only tours tagged for it + untagged/global ones, and the "Show in workspaces" field appears.
+  manageWorkspaceScopes: false, // admin workspace: shows the tagging field and sees ALL tours (no filter).
 });
 ```
+
+`workspaceScope` and `manageWorkspaceScopes` are **mutually exclusive per
+workspace** and only used in the shared-dataset central-management model. Omit
+both for the default one-dataset-per-workspace setup (no extra field, no filter —
+unchanged behaviour).
 
 Built-in chrome target keys (each maps to a Sanity `data-testid`) —
 **global:** `navbar`, `logo`, `create-button`, `search`, `perspective`,
@@ -86,11 +94,14 @@ This drives every later choice. Determine:
 
 1. **Find the config.** Locate `sanity.config.ts` (or `.js`). List each workspace
    in the `defineConfig([...])` array: `name`, `basePath`, `projectId`, `dataset`.
-2. **Shared dataset?** If two or more target workspaces use the **same** dataset,
-   each MUST get a **distinct `schemaTypeName`** — the launcher queries
-   `*[_type == $type]`, so distinct type names are what keep each workspace's tour
-   set isolated within a shared dataset. If every target workspace has its own
-   dataset, you can leave `schemaTypeName` at its `tour` default.
+2. **Shared dataset?** If every target workspace has its own dataset, leave
+   `schemaTypeName` at its `tour` default. If two or more share the **same**
+   dataset, the scoping model (see *Multi-workspace & central management*) decides:
+   - **Model A (isolated):** give each a **distinct `schemaTypeName`** — the
+     launcher queries `*[_type == $type]`, so distinct type names keep each
+     workspace's tour set separate within the shared dataset.
+   - **Model B (central management):** keep the **same `schemaTypeName`** across
+     them and isolate with `workspaceScope` / `manageWorkspaceScopes` instead.
 3. **Custom desk structure?** For each target workspace, check its
    `structureTool({ structure })` resolver. If it has a custom structure that
    explicitly lists document types, the tour type will NOT appear automatically →
@@ -101,6 +112,39 @@ This drives every later choice. Determine:
    (e.g. `title`, `slug`). Read the schema to use real names.
 
 Confirm these choices with the user before editing if any are ambiguous.
+
+## Multi-workspace & central management
+
+**Ask the user which scoping model they want before wiring** (it changes the
+config in Step 3). At runtime the launcher fetches tours through the **active
+workspace's** client — i.e. from *that workspace's own project + dataset*. Pick one:
+
+**A. Per workspace (default).** Each workspace owns its tours; no central admin.
+- **Separate dataset per workspace** → fully isolated automatically. Leave
+  `schemaTypeName` at `tour`, no scope options.
+- **Shared dataset, isolated tours** → give each workspace a **distinct
+  `schemaTypeName`** (Step 1.2) so their tour sets don't bleed together.
+- **One admin Studio listing many workspaces** → a single Studio config can list
+  every workspace, so an admin switches between them and authors each one's tours.
+  Tours still live per-dataset. Works with no scope options.
+
+**B. Central management (shared dataset + global admin).** One shared dataset; a
+single "admin" workspace authors *all* tours and tags which workspace(s) each
+appears in; every product workspace shows only its own (plus untagged/global)
+tours. Built in via the `workspaceScope` / `manageWorkspaceScopes` options:
+- **All participating workspaces must point at the same dataset** and use the
+  **same `schemaTypeName`** (they share one tour type).
+- **Admin workspace:** `manageWorkspaceScopes: true` → shows the *Show in
+  workspaces* field and sees every tour (no filter).
+- **Each product workspace:** `workspaceScope: "<key>"` (use the workspace `name`)
+  → its launcher fetches `*[_type==$type && (untagged || "<key>" in workspaces)]`,
+  so it shows tours tagged for it plus any left untagged (treated as global).
+- Authors tag a tour by adding workspace keys to its **Show in workspaces** field
+  (empty = shows everywhere).
+
+If the user is unsure, default to **A** (simpler, no shared-dataset coupling).
+Only reach for **B** when they explicitly want one place to manage tours across
+workspaces.
 
 ## Step 2 — Vendor the plugin (no npm publish, no tarball)
 
@@ -154,6 +198,17 @@ tourPlugin({
 }),
 ```
 
+**If the user chose central management (model B above)**, add the scope option per
+workspace instead of distinct `schemaTypeName`s (they share one type here):
+
+```ts
+// global admin workspace — manages & sees every tour:
+tourPlugin({ schemaTypeName: 'tour', docTypes: [...], manageWorkspaceScopes: true }),
+
+// each product workspace — shows only its own + untagged tours:
+tourPlugin({ schemaTypeName: 'tour', docTypes: [...], workspaceScope: 'marketing' }),
+```
+
 Leave non-target workspaces untouched. **Re-running is safe: skip any workspace
 whose `plugins` array already contains `tourPlugin` — only add it where missing,
 so a second run (e.g. to wire a newly-added workspace) never double-registers
@@ -161,11 +216,25 @@ the plugin, launcher, or schema type.**
 
 ## Step 4 — Patch custom desk structures (only if Step 1.3 said so)
 
-If a target workspace uses a custom structure resolver, add a list item for the
-tour type so editors can browse/author tours. Match the helpers the project
-already uses — e.g. a `createList({ S, type, title })` helper, or plain
-`S.documentTypeList('<schemaTypeName>').title('Guided Tours')`. Use the same
-`schemaTypeName` you wired in Step 3.
+If a target workspace uses a custom structure resolver, add **one** list item for
+the tour type so editors can browse/author tours. Use the same `schemaTypeName`
+you wired in Step 3.
+
+**Rules — do not reshape the user's Studio:**
+- **Never replace, reorder, or remove existing structure.** This is an *additive*
+  edit only: preserve every existing list item, divider, and singleton exactly as
+  written. Add a single new `Guided Tours` item — nothing else changes.
+- **Append to the bottom by default**, after the existing items (a `S.divider()`
+  before it is fine). Do not insert it at the top or between existing items.
+- **Ask the user where to put it before editing** if the placement is at all
+  ambiguous (e.g. grouped/nested structures, or they may want it under a
+  "Settings"/"Admin" group). Offer the bottom as the default. Never silently
+  restructure the top level.
+- **Make the smallest possible diff** — add the one item in place; do not rewrite,
+  reformat, or "clean up" the surrounding structure file.
+
+Match the helpers the project already uses — e.g. a `createList({ S, type, title })`
+helper, or plain `S.documentTypeList('<schemaTypeName>').title('Guided Tours')`.
 
 **Gotcha — typed structure helpers reject the tour type.** The tour type is
 contributed by the plugin at runtime, so it is NOT in the project's generated

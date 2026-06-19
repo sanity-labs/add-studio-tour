@@ -18,7 +18,7 @@ import {
 export { DEFAULT_CHROME_SELECTORS, resolveTargetSelector } from './targeting'
 
 export function createTourType(config: ResolvedTourConfig) {
-  const { schemaTypeName, docTypes, fieldTargets, chromeSelectors } = config
+  const { schemaTypeName, docTypes, fieldTargets, chromeSelectors, showWorkspaceField } = config
 
   // Origin tag shown in the dropdown so authors can tell a native Sanity Studio
   // target apart from one this studio added. Keys present in
@@ -61,6 +61,21 @@ export function createTourType(config: ResolvedTourConfig) {
         rows: 2,
         description: 'Shown on the tour card in the launcher.',
       }),
+      // Central-management mode only: tag which workspaces this tour appears in.
+      // Hidden unless the plugin is configured with workspaceScope /
+      // manageWorkspaceScopes (a shared-dataset, global-admin setup).
+      ...(showWorkspaceField
+        ? [
+            defineField({
+              name: 'workspaces',
+              title: 'Show in workspaces',
+              type: 'array',
+              of: [defineArrayMember({ type: 'string' })],
+              description:
+                'Workspace keys this tour appears in — each must match a workspace’s configured workspaceScope. Leave empty to show the tour in every workspace.',
+            }),
+          ]
+        : []),
       defineField({
         name: 'steps',
         title: 'Steps',

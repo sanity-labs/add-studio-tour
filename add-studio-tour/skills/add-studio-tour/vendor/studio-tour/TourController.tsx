@@ -50,7 +50,11 @@ export function TourController({
 }) {
   const router = useRouter()
   const { basePath } = useWorkspace()
-  const { tours, loading } = useTours(config.schemaTypeName, config.chromeSelectors)
+  const { tours, loading } = useTours(
+    config.schemaTypeName,
+    config.chromeSelectors,
+    config.workspaceScope
+  )
   const isRunning = useTourStore((s) => s.isRunning)
 
   const navigate = useCallback(
