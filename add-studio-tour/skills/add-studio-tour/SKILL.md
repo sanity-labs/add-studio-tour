@@ -117,7 +117,7 @@ set **at most one** per step, and resolve in this precedence:
 | --- | --- | --- | --- |
 | Intro / welcome / pure copy | *(omit)* | *(nothing)* — set a `delay` instead | no element to reveal |
 | Global chrome — navbar, global Create, search, logo, perspective | `navbar`, `create-button`, `search`, … | *(nothing)* | always present in every view |
-| A list pane's `+` create button or the list body | `pane-create`, `document-list` | **`openPath`** to that list pane | only render while that structure list is open; `openDocument` won't reveal them |
+| A list pane's `+` create button or the list body | `pane-create`, `document-list` | **`openPath`** to that **document-list** pane (the leaf `documentTypeList` node — not a parent grouping list) | only render while that document list is open; `openDocument` won't reveal them, and an intermediate grouping `S.list()` has no `+` |
 | A field, the doc title, PT editor, publish button, doc panel, the `···` menu | `field:<name>`, `document-title`, `pt-editor`, `publish-button`, `document-panel`, `show-more` | **`openDocument`** (ref to a real doc) | opens via the `edit` intent and reveals the doc + its parent panes |
 | A tool's own UI (Presentation, Vision) | *(tool-specific)* | **`openTool`** (e.g. `"presentation"`) | navigates to that tool by name |
 
@@ -527,6 +527,17 @@ Targeting lessons learned (Sanity v5):
   copying everything from `/structure` onward out of the URL, e.g.
   `/structure/pagesByPath;all-pages-list`. `openPath` is workspace-relative — the
   plugin prepends the workspace `basePath` for you, so don't include it.
+  - **Reach the actual document-list pane, not a parent grouping list.** Only a
+    leaf `documentTypeList` pane renders the `+` (`action-intent-button`). In a
+    nested/custom structure (e.g. `createSlugBasedStructure`), the parent node
+    (`/structure/pagesByPath`) opens an intermediate `S.list()` that *lists* child
+    items but is **not** a document list, so it has **no `+`** and `pane-create`
+    finds nothing. Drill all the way down by appending the leaf node's id
+    (`;all-pages-list`). **Diagnostic:** if the selector dump shows the pane's
+    `pane-item-*` entries but **no `action-intent-button`**, you stopped on a
+    grouping pane — go one level deeper. (This was the exact bug in the marketing
+    "Create a landing page" tour: `openPath` was `/structure/pagesByPath`; the fix
+    appended `;all-pages-list`.)
   - **Caveat — structure routes are brittle.** The path encodes desk-structure
     node ids (`pagesByPath`, `all-pages-list`, …), so it breaks if you rename the
     structure. Prefer `openDocument`/`field:` targets where they suffice; reach

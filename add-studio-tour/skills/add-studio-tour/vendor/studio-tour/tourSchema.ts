@@ -151,8 +151,13 @@ export function createTourType(config: ResolvedTourConfig) {
                   'or the list body (document-list), which no document or tool ' +
                   'opens. Copy everything from "/structure" onward out of the ' +
                   'Studio URL, e.g. "/structure/pagesByPath;all-pages-list" ' +
-                  '(workspace-relative; basePath is added for you). Used only when ' +
-                  'no openDocument is set above.',
+                  '(workspace-relative; basePath is added for you). MUST resolve ' +
+                  'to an actual document-list pane — only those render the "+" ' +
+                  'create button. In a nested/custom structure, drill ALL the way ' +
+                  'to the document-list node ("…;all-pages-list"); stopping at a ' +
+                  'parent grouping list ("/structure/pagesByPath" alone) opens a ' +
+                  'section pane that lists items but has no "+", so pane-create ' +
+                  'finds nothing. Used only when no openDocument is set above.',
               }),
               defineField({
                 name: 'openTool',
