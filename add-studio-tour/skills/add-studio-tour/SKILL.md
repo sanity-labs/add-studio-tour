@@ -31,9 +31,21 @@ tourPlugin({
   docTypes: [], // doc types a step's "Open document first" may reference
   fieldTargets: [], // [{ title, field }] → authoring-dropdown options ONLY. At runtime any visible field path works (e.g. field:title, nested field:seo.metaTitle), whether or not it's listed here.
   chromeSelectors: {}, // override/extend built-in chrome selectors (see below)
+  progress: false, // OPTIONAL per-user progress + resume. Off by default. `true` enables with defaults; `{ dataset, typeName }` customizes. Writes `studioTourProgress` docs (to the content dataset by default). The admin dashboard is a SEPARATE plugin — `studioTourDashboard()`. See Step 5b.
   // ── Central-management mode (shared dataset only — see "Multi-workspace") ──
   workspaceScope: undefined, // product workspace: a stable key (e.g. workspace name). Launcher shows only tours tagged for it + untagged/global ones, and the "Show in workspaces" field appears.
   manageWorkspaceScopes: false, // admin workspace: shows the tagging field and sees ALL tours (no filter).
+});
+```
+
+The standalone **dashboard** plugin (only if you enabled `progress`):
+
+```ts
+studioTourDashboard({
+  roles: ["administrator"], // OPTIONAL. Only these project roles see the "Tour Progress" tool. Omit → everyone sees it.
+  dataset: undefined,        // OPTIONAL. Match `progress.dataset` if you customized it.
+  typeName: undefined,       // OPTIONAL. Match `progress.typeName` if you customized it.
+  schemaTypeName: undefined, // OPTIONAL. Tour doc type to list (default 'tour'). Match tourPlugin's schemaTypeName so EVERY tour shows, even unplayed ones.
 });
 ```
 
@@ -85,6 +97,74 @@ Authored tour document shape (what the launcher reads — **published perspectiv
   ],
 }
 ```
+
+---
+
+## Authoring tour steps (best practices — apply on every "create a tour" request)
+
+When asked to author a tour (e.g. *"create a guided tour to create a new landing
+page from scratch"*), the hard part is **not** the copy — it's that most targets
+live *nested* inside the Studio (a field, the publish button, a list's `+`) and
+are not in the DOM until you navigate there. **A step highlights nothing unless
+the thing it points at is already on screen.** So every step that targets nested
+chrome must carry an "open first" reference. The three are mutually exclusive,
+set **at most one** per step, and resolve in this precedence:
+**`openDocument` > `openPath` > `openTool`**.
+
+**Open-first decision table — pick by what the step highlights:**
+
+| The step highlights… | `target` | Open first with | Why |
+| --- | --- | --- | --- |
+| Intro / welcome / pure copy | *(omit)* | *(nothing)* — set a `delay` instead | no element to reveal |
+| Global chrome — navbar, global Create, search, logo, perspective | `navbar`, `create-button`, `search`, … | *(nothing)* | always present in every view |
+| A list pane's `+` create button or the list body | `pane-create`, `document-list` | **`openPath`** to that list pane | only render while that structure list is open; `openDocument` won't reveal them |
+| A field, the doc title, PT editor, publish button, doc panel, the `···` menu | `field:<name>`, `document-title`, `pt-editor`, `publish-button`, `document-panel`, `show-more` | **`openDocument`** (ref to a real doc) | opens via the `edit` intent and reveals the doc + its parent panes |
+| A tool's own UI (Presentation, Vision) | *(tool-specific)* | **`openTool`** (e.g. `"presentation"`) | navigates to that tool by name |
+
+**Rules that trip up first drafts:**
+
+- **Every in-document step needs its own `openDocument` — not just the first
+  one.** The runtime re-navigates per step independently; it does not "stay" in
+  the doc opened by an earlier step. So in a page-creation tour, the title, slug,
+  description, page-builder, and publish steps **each** carry the same
+  `openDocument` ref. (This is exactly the backfill this session needed.)
+- **Reference a real, stable, seeded document id**, not a random/draft one —
+  `openDocument` is a hard reference, so a reseed with new ids silently orphans
+  the step (see Step 5). Prefer a known seeded id (e.g. `page-spring-launch`).
+- **`openDocument` opens *into* a document; it cannot reveal a list view.** To
+  highlight the `+` in a list (the natural "create a new page" step), use
+  `openPath` to that list pane and `target: pane-create` — copy everything from
+  `/structure` onward out of the Studio URL (it's workspace-relative; the plugin
+  prepends `basePath`).
+- **Don't point a field step at a field behind an inactive group tab** — it
+  isn't in the DOM. Target default-group fields, or drop `groups` on the demo
+  doc. (Full rationale in Step 6's lessons.)
+- **Order steps to follow the real workflow** and let each step's open-first ref
+  match where that action happens: navigate (sidebar/tool) → create (`pane-create`
+  via `openPath`) → fill fields (`field:*` via `openDocument`) → publish
+  (`publish-button` via `openDocument`).
+
+The full target catalog, per-target "present when" conditions, and the
+debugging recipe for a missed selector live in Step 6 and **SELECTORS.md** — this
+table is the *authoring-time* shortcut so the open-first refs are correct on the
+first pass.
+
+**Two audiences read these rules — keep both channels in sync.** A code-access
+agent (e.g. Claude Code) reads them *here*. But a **code-less agent authoring
+tours over the Sanity MCP / Content Agent** never sees this skill — it only sees
+the **deployed schema** via `get_schema`, the dataset, and Sanity's own docs. For
+that agent the open-first guidance lives in the **field `description`s of the
+tour step type** (`vendor/studio-tour/tourSchema.ts`): the doc-level description
+states the open-first rule + precedence, and `target` / `openDocument` /
+`openPath` / `openTool` each say when they're required. Field and document
+descriptions *do* survive `sanity schema deploy` and come back through
+`get_schema` (verified). Consequences:
+- **If you edit those descriptions, redeploy the schema** (`npx sanity schema
+  deploy`) — the MCP agent reads the deployed copy, not the source.
+- The plugin must be **installed and its schema deployed** in the target studio
+  before any MCP/Content-Agent tour authoring will have the guidance.
+- Keep the prose in `tourSchema.ts` and this section consistent when either
+  changes, so both audiences get the same rule.
 
 ---
 
@@ -198,6 +278,24 @@ tourPlugin({
 }),
 ```
 
+**To enable per-user progress, resume & the admin dashboard (optional)**, add
+`progress` to `tourPlugin` and the separate `studioTourDashboard()` plugin to the
+same workspace's `plugins`. Both are off unless added — full behaviour, storage,
+and privacy caveats are in **Step 5b**:
+
+```ts
+import { tourPlugin, studioTourDashboard } from './src/plugins/studio-tour'
+// ...
+plugins: [
+  tourPlugin({
+    docTypes: [...],
+    fieldTargets: [...],
+    progress: true,                          // writes studioTourProgress docs (content dataset by default)
+  }),
+  studioTourDashboard({ roles: ['administrator'] }), // "Tour Progress" tool, gated to admins (omit roles → everyone)
+]
+```
+
 **If the user chose central management (model B above)**, add the scope option per
 workspace instead of distinct `schemaTypeName`s (they share one type here):
 
@@ -249,7 +347,11 @@ its own there.
 ## Step 5 — Author a starter tour
 
 Create one **published** tour document per wired workspace so **Start tour** isn't
-empty on first run. Use `scripts/author_tour.ts` (bundled with this skill) — it
+empty on first run. **Before writing steps, apply the open-first rules in
+*Authoring tour steps (best practices)* above** — every step that highlights a
+nested target (field, publish button, list `+`) needs its own `openDocument` /
+`openPath` / `openTool`, or it silently highlights nothing. Use
+`scripts/author_tour.ts` (bundled with this skill) — it
 writes a published doc via `@sanity/client`. It needs a write token:
 
 ```sh
@@ -279,6 +381,95 @@ any field/panel targets that depended on the doc being open then miss too. After
 a content reset, re-point the tour's `openDocument` refs (or re-author the tour)
 to the new doc ids. Prefer referencing **stable, seeded ids** (e.g.
 `product-merino-crewneck`) over random ones so tours survive a reseed.
+
+## Step 5b — Per-user progress & resume (optional)
+
+Off by default. Set `progress` on `tourPlugin` to track each user's progress
+through each tour and let them **resume** an unfinished tour from the launcher.
+The **live admin dashboard** is a separate plugin — add `studioTourDashboard()`
+to the same workspace's `plugins` to register the "Tour Progress" tool (it's on
+simply by being added):
+
+```ts
+import { tourPlugin, studioTourDashboard } from './plugins/studio-tour'
+
+plugins: [
+  tourPlugin({
+    docTypes: [...],
+    fieldTargets: [...],
+    progress: true,             // or: { dataset, typeName }
+  }),
+  studioTourDashboard(),                          // tool, visible to everyone
+  // studioTourDashboard({ roles: ['administrator'] })  // only admins see the tool
+  // studioTourDashboard({ dataset, typeName })         // only if you customized progress.*
+]
+```
+
+**How it works.** Each play is its **own** document — one per run, id
+`studioTourProgress.<user>.<tour>.<runId>` — so a user's history is preserved
+(e.g. two completed runs + one incomplete) instead of the latest run overwriting
+the rest. A fresh start (or **Start over**) mints a new `runId` and doc; each step
+advance patches `currentStep`; finishing sets `completed`, closing early sets
+`incomplete`. **Resume** continues the most-recent unfinished play (same doc);
+completed/incomplete plays remain as history. The launcher shows **"Resume · step
+N/M"** + **Start over** when an unfinished play exists, and a **Completed** pill
+once any play of that tour is done. Reads use the **Live Content API**, so resume
+state and the dashboard update within ~a second across tabs. Writes are
+client-side and **fail-safe**: if the user can't write or the dataset is missing,
+the tour still runs — progress just no-ops (never throws).
+
+**Where it's stored — the studio's own content dataset by default.** Progress
+docs go in the active (content) dataset, a regular dataset governed by project
+roles, so admins and normal write-roles can persist progress. The
+`studioTourProgress` type is registered but kept out of the editor's way:
+`readOnly`, hidden from global search, filtered out of the global "Create new"
+menu, and not listed in a custom desk structure.
+
+> ⚠️ **The Comments `<dataset>-comments` add-on dataset CANNOT be used** for this,
+> even though it's private and complimentary. Add-on datasets are provisioned with
+> Sanity-managed grants that only permit the `comment`/task types — writing a
+> `studioTourProgress` doc there returns **403 for everyone, including admins**
+> (project roles can't widen a managed add-on dataset's grants). This was tried;
+> it doesn't work.
+
+> ⚠️ **Privacy:** progress captures user **name/email**. If the content dataset is
+> **public**, those docs are world-readable. To keep identity private, create a
+> separate **private** dataset and set `progress.dataset` (and the matching
+> `studioTourDashboard({ dataset })`) to it. That dataset counts toward the plan's
+> dataset limit, but is the only way to keep this data private.
+
+**Restricting who sees the dashboard.** Pass `studioTourDashboard({ roles:
+['administrator'] })` — the "Tour Progress" tool is then only registered for users
+holding one of those project roles. Omit `roles` to show it to everyone. This is
+convenience visibility, **not** a security boundary — the docs themselves are
+still governed by dataset permissions.
+
+Requirements to verify with the user (the feature degrades but never throws if
+unmet — and logs a single, actionable console warning per dataset so the cause
+isn't a mystery):
+- **Write access.** The current user must be able to write the progress dataset
+  (admins and standard write-roles can write the content dataset). If not, the
+  endpoint returns **403** and the plugin logs `[tour] access forbidden (403) on
+  progress dataset "…" …`. Read-only/anonymous viewers can't persist progress —
+  for that audience you'd need a token-backed endpoint instead (out of scope).
+- **Dataset exists.** If `progress.dataset` points somewhere that doesn't exist,
+  the endpoint returns **404** and the plugin logs `[tour] progress dataset "…"
+  does not exist …`. Check with the Sanity MCP `list_datasets`.
+- **CORS.** The Live Content API uses the project's CORS origins; a Studio that
+  already loads tours from this project is fine. If live updates don't arrive,
+  confirm the origin is allowed in sanity.io/manage.
+
+**Design notes.** When `progress` is on, the plugin registers a
+`studioTourProgress` document type and writes docs to `progress.dataset` (the
+content dataset by default). The type is `readOnly`, hidden from search, and
+filtered out of the global Create menu, so it stays out of editors' way even when
+it shares the content dataset; the dashboard lists **every authored tour** (even
+unplayed ones — it reads the tour list from the content dataset) and, under each,
+groups plays **by user** (Tour ▸ User ▸ plays), one row per play. It's **one doc
+per play** (id ends in a unique `runId`), so replays accumulate as separate
+entries rather than overwriting. `tourId`/`tourLabel` are stored as a string + snapshot (not a
+reference), so a tour edit/reseed can't orphan them. The pure id/doc/query
+contract is covered by `tests/progress.test.ts`.
 
 ## Step 6 — Run & verify selectors (decision loop)
 

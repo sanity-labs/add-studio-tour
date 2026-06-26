@@ -2,8 +2,9 @@ import { createContext, useCallback, useContext, useMemo } from 'react'
 import type { ReactNode } from 'react'
 import { useWorkspace } from 'sanity'
 import { useRouter } from 'sanity/router'
-import { useTour } from './useTour'
+import { useTour, type RunOptions } from './useTour'
 import { useTours } from './useTours'
+import { useTourProgress, useResumeState, useCompletedTours, type ResumeInfo } from './useTourProgress'
 import { useTourStore } from './store'
 import type { NavTarget, ResolvedTourConfig, TourDefinition } from './types'
 
@@ -29,8 +30,12 @@ interface TourContextValue {
   tours: TourDefinition[]
   loading: boolean
   isRunning: boolean
-  run: (tour: TourDefinition) => void
+  run: (tour: TourDefinition, options?: RunOptions) => void
   stop: () => void
+  /** Current user's resumable tours, keyed by tourId. Empty when progress is off. */
+  resume: Record<string, ResumeInfo>
+  /** Tour ids the current user has completed. Empty when progress is off. */
+  completed: Set<string>
 }
 
 const TourContext = createContext<TourContextValue | null>(null)
@@ -56,6 +61,9 @@ export function TourController({
     config.workspaceScope
   )
   const isRunning = useTourStore((s) => s.isRunning)
+  const progress = useTourProgress(config)
+  const resume = useResumeState(config)
+  const completed = useCompletedTours(config)
 
   const navigate = useCallback(
     (target: NavTarget) => {
@@ -76,15 +84,24 @@ export function TourController({
     [router, basePath]
   )
 
-  const { run, stop } = useTour({
-    onBeforeStep: async (navigateTo) => {
-      if (navigateTo) navigate(navigateTo)
-    },
-  })
+  const lifecycle = useMemo(
+    () => ({
+      onBeforeStep: async (navigateTo: NavTarget | undefined) => {
+        if (navigateTo) navigate(navigateTo)
+      },
+      onStart: progress.start,
+      onStep: progress.advance,
+      onComplete: progress.complete,
+      onLeave: progress.leave,
+    }),
+    [navigate, progress]
+  )
+
+  const { run, stop } = useTour(lifecycle)
 
   const value = useMemo<TourContextValue>(
-    () => ({ tours, loading, isRunning, run, stop }),
-    [tours, loading, isRunning, run, stop]
+    () => ({ tours, loading, isRunning, run, stop, resume, completed }),
+    [tours, loading, isRunning, run, stop, resume, completed]
   )
 
   return <TourContext.Provider value={value}>{children}</TourContext.Provider>

@@ -1,5 +1,6 @@
-import { Box, Button, Menu, MenuButton, MenuItem, Spinner, Stack, Text } from '@sanity/ui'
-import { CloseIcon, PlayIcon } from '@sanity/icons'
+import { Badge, Box, Button, Flex, Menu, MenuButton, MenuDivider, MenuItem, Spinner, Stack, Text } from '@sanity/ui'
+import { CloseIcon, PlayIcon, RetryIcon } from '@sanity/icons'
+import { Fragment } from 'react'
 import { useTourContext } from './TourController'
 
 /**
@@ -10,7 +11,7 @@ import { useTourContext } from './TourController'
  * stop button. Uses `mode="bleed"` to match the navbar's other action buttons.
  */
 export function TourLauncher() {
-  const { tours, loading, isRunning, run, stop } = useTourContext()
+  const { tours, loading, isRunning, run, stop, resume, completed } = useTourContext()
 
   if (isRunning) {
     return (
@@ -44,23 +45,71 @@ export function TourLauncher() {
               </Text>
             </Box>
           ) : (
-            tours.map((tour) => (
-              <MenuItem key={tour.id} onClick={() => run(tour)}>
-                <Stack space={2} padding={2} style={{ maxWidth: 280 }}>
-                  <Text size={1} weight="medium">
-                    {tour.label}
-                  </Text>
-                  {tour.description ? (
-                    <Text size={1} muted>
-                      {tour.description}
-                    </Text>
-                  ) : null}
-                  <Text size={0} muted>
-                    {tour.steps.length} steps →
-                  </Text>
-                </Stack>
-              </MenuItem>
-            ))
+            tours.map((tour, idx) => {
+              const r = resume[tour.id]
+              // Resumable when we have saved progress mid-tour (not at the very
+              // start, not already at/past the end).
+              const resumable =
+                !!r && r.currentStep > 0 && r.totalSteps > 0 && r.currentStep < r.totalSteps
+              return (
+                <Fragment key={tour.id}>
+                  {idx > 0 ? <MenuDivider /> : null}
+                  {/* Tour title + description as a non-interactive header, so the
+                      actions below (Resume / Start over / Start) are explicit and
+                      symmetric rather than "click the tour to continue". */}
+                  <Box paddingX={3} paddingTop={3} paddingBottom={2} style={{ maxWidth: 300 }}>
+                    <Stack space={2}>
+                      <Flex align="center" gap={2}>
+                        <Text size={1} weight="medium">
+                          {tour.label}
+                        </Text>
+                        {completed.has(tour.id) ? (
+                          <Badge tone="positive" mode="outline" fontSize={0}>
+                            Completed
+                          </Badge>
+                        ) : null}
+                      </Flex>
+                      {tour.description ? (
+                        <Text size={1} muted>
+                          {tour.description}
+                        </Text>
+                      ) : null}
+                    </Stack>
+                  </Box>
+                  {resumable ? (
+                    // Resume + Start over side by side in one row. They stay
+                    // MenuItems (nested in Flex) so clicking still closes the menu.
+                    <Flex paddingX={2} paddingBottom={2} gap={2}>
+                      <Box>
+                        <MenuItem
+                          icon={RetryIcon}
+                          text="Start over"
+                          fontSize={1}
+                          radius={2}
+                          onClick={() => run(tour, { startAt: 0 })}
+                        />
+                      </Box>
+                      <Box flex={1}>
+                        <MenuItem
+                          icon={PlayIcon}
+                          text={`Resume · step ${r.currentStep + 1}/${r.totalSteps}`}
+                          fontSize={1}
+                          radius={2}
+                          onClick={() => run(tour, { startAt: r.currentStep, runId: r.runId })}
+                        />
+                      </Box>
+                    </Flex>
+                  ) : (
+                    <MenuItem
+                      icon={PlayIcon}
+                      text={`Start · ${tour.steps.length} steps`}
+                      fontSize={1}
+                      onClick={() => run(tour, { startAt: 0 })}
+                    />
+                  )}
+                </Fragment>
+              )
+            })
           )}
         </Menu>
       }
