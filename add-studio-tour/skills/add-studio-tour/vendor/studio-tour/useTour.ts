@@ -7,6 +7,23 @@ import { ensureDriverStyles } from './driverStyles'
 import { useTourStore } from './store'
 
 /**
+ * A unique-enough id for one tour run (play). Prefers `crypto.randomUUID`, but
+ * that's only defined in a secure context — a Studio served over plain
+ * `http://<lan-ip>` would otherwise throw here and break the whole tour, not just
+ * progress. Falls back to a timestamp+random id so `run()` never throws.
+ */
+function makeRunId(): string {
+  try {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return crypto.randomUUID()
+    }
+  } catch {
+    /* fall through to the non-crypto id */
+  }
+  return `r-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+}
+
+/**
  * Poll for an element to appear in the DOM before proceeding. More robust than
  * a static delay: fast machines proceed immediately, slow ones get up to
  * `timeout` ms. Resolves the element once found, or null if the timeout elapses.
@@ -113,10 +130,45 @@ function makeSelectorDumper() {
  * `onBeforeStep` callback you provide, then waits for the step's target
  * element to render (and settle into view) before advancing.
  */
-export function useTour(options?: {
+// Every callback gets the active play's `runId` so progress writes hit the exact
+// per-play doc. A fresh run mints a new runId; a resume reuses the existing one.
+export interface TourLifecycle {
   onBeforeStep?: (navigateTo: NavTarget | undefined, stepIndex: number) => Promise<void> | void
-}) {
+  /** Fired once when a tour starts fresh (not on resume). Good for createOrReplace. */
+  onStart?: (tour: TourDefinition, runId: string) => void
+  /** Fired each time a step is shown, with its index. */
+  onStep?: (tour: TourDefinition, runId: string, stepIndex: number) => void
+  /** Fired when the user advances past the last step. */
+  onComplete?: (tour: TourDefinition, runId: string) => void
+  /** Fired when the tour is closed before completing, with the last shown index. */
+  onLeave?: (tour: TourDefinition, runId: string, stepIndex: number) => void
+  /**
+   * Fired when a step is skipped because its target selector never resolved —
+   * i.e. a broken/out-of-date step. At most once per step index per run (the
+   * caller dedupes), so persisting it can't grow unbounded on back/forth nav.
+   */
+  onMissedStep?: (tour: TourDefinition, runId: string, stepIndex: number) => void
+}
+
+export interface RunOptions {
+  /** Step index to begin at (for resume). Defaults to 0. */
+  startAt?: number
+  /**
+   * The play to (re)write. Omit for a fresh play — a new id is minted. On resume,
+   * pass the unfinished play's runId so its existing doc is continued.
+   */
+  runId?: string
+}
+
+export function useTour(options?: TourLifecycle) {
   const driverRef = useRef<Driver | null>(null)
+  // Tracks how the current run ends so completion and leaving fire exactly
+  // once each, regardless of whether driver.js's onDestroyStarted also fires.
+  const outcomeRef = useRef<'running' | 'completed' | 'left'>('running')
+  const activeTourRef = useRef<TourDefinition | null>(null)
+  const lastIndexRef = useRef(0)
+  // The active play's run id, threaded into every progress lifecycle callback.
+  const runIdRef = useRef<string>('')
   const startTour = useTourStore((s) => s.startTour)
   const stopTour = useTourStore((s) => s.stopTour)
   const setStep = useTourStore((s) => s.setStep)
@@ -133,14 +185,35 @@ export function useTour(options?: {
   }, [workspaceName])
 
   const run = useCallback(
-    async (tour: TourDefinition) => {
+    async (tour: TourDefinition, runOptions?: RunOptions) => {
       // driver.js styles are injected at runtime (a JS-only library build can't
       // ship a CSS import that survives to the consumer's bundler).
       ensureDriverStyles()
       startTour(tour.id)
 
+      // Reset per-run outcome tracking.
+      outcomeRef.current = 'running'
+      activeTourRef.current = tour
+      // Resume passes the unfinished play's runId; a fresh run mints a new one
+      // (so it becomes its own play doc rather than overwriting a prior run).
+      const runId = runOptions?.runId ?? makeRunId()
+      runIdRef.current = runId
+      const lastStep = Math.max(0, tour.steps.length - 1)
+      const startAt = Math.min(Math.max(0, runOptions?.startAt ?? 0), lastStep)
+      lastIndexRef.current = startAt
+      // Fresh start creates the play doc at step 0. On resume (startAt > 0) we must
+      // NOT — that would reset the run; per-step writes patch the existing doc.
+      if (startAt === 0) options?.onStart?.(tour, runId)
+      // onStart already wrote step 0, so skip the first onStep if it lands on 0 —
+      // avoids a redundant second write on every fresh start. Cleared after the
+      // first shown step so later navigation back to step 0 still records.
+      let skipInitialStepWrite = startAt === 0
+
       // Dumps the available Studio selectors the first time a step is skipped.
       const dumpSelectors = makeSelectorDumper()
+      // Step indices already reported as missed this run — so a back/forth that
+      // re-skips the same step doesn't record (or re-write) it twice.
+      const missedThisRun = new Set<number>()
 
       const steps: DriveStep[] = tour.steps.map((step) => ({
         element: step.element,
@@ -171,15 +244,29 @@ export function useTour(options?: {
             if (driverRef.current?.isActive()) driverRef.current.moveTo(i)
             else driverRef.current?.drive(i)
             setStep(i)
+            lastIndexRef.current = i
+            if (!(skipInitialStepWrite && i === 0)) options?.onStep?.(tour, runId, i)
+            skipInitialStepWrite = false
             return
           }
 
           console.warn(`[tour] skipping step ${i}: element not found (${step.element})`)
           dumpSelectors()
+          // Persist the miss (once per step index per run) so a broken tour is
+          // visible in the dashboard, not only in this console.
+          if (!missedThisRun.has(i)) {
+            missedThisRun.add(i)
+            options?.onMissedStep?.(tour, runId, i)
+          }
           i += direction
         }
 
-        // Ran off either end with nothing showable — finish the tour.
+        // Ran off an end with nothing showable. Forward → the user advanced past
+        // the last step, so the tour is complete; backward → just stop.
+        if (direction === 1 && outcomeRef.current === 'running') {
+          outcomeRef.current = 'completed'
+          options?.onComplete?.(tour, runId)
+        }
         driverRef.current?.destroy()
         driverRef.current = null
         stopTour()
@@ -190,6 +277,12 @@ export function useTour(options?: {
         showProgress: true,
         animate: true,
         allowClose: true,
+        // Explicit button labels. driver.js swaps "Next" for the done button on
+        // the last step, so this gives a clear "Finish" affordance there (it
+        // still routes through onNextClick below → onComplete fires, then destroy).
+        nextBtnText: 'Next',
+        prevBtnText: 'Back',
+        doneBtnText: 'Finish',
         steps,
 
         onNextClick: async () => {
@@ -203,22 +296,36 @@ export function useTour(options?: {
         },
 
         onDestroyStarted: () => {
+          // Fired when the user closes the tour (X / overlay / Esc). If it didn't
+          // already complete, record it as incomplete at the last shown step
+          // (still resumable — not abandoned).
+          if (outcomeRef.current === 'running') {
+            outcomeRef.current = 'left'
+            if (activeTourRef.current)
+              options?.onLeave?.(activeTourRef.current, runIdRef.current, lastIndexRef.current)
+          }
           driverRef.current?.destroy()
           stopTour()
         },
       })
 
       // Drive the first showable step (skipping any leading missing elements).
-      await showFrom(0, 1)
+      await showFrom(startAt, 1)
     },
     [startTour, stopTour, setStep, options]
   )
 
   const stop = useCallback(() => {
+    // Manual stop (e.g. the navbar "Stop tour" button) marks the tour incomplete.
+    if (outcomeRef.current === 'running') {
+      outcomeRef.current = 'left'
+      if (activeTourRef.current)
+        options?.onLeave?.(activeTourRef.current, runIdRef.current, lastIndexRef.current)
+    }
     driverRef.current?.destroy()
     driverRef.current = null
     stopTour()
-  }, [stopTour])
+  }, [stopTour, options])
 
   return { run, stop }
 }

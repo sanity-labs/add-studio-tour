@@ -22,6 +22,12 @@ export type NavTarget =
 export interface TourStep {
   /** CSS selector for the target element inside the Studio. */
   element?: string
+  /**
+   * The authored target key this step points at (e.g. `pane-create`,
+   * `field:title`), carried through from the document so a skipped step can be
+   * reported by the friendly key, not just its resolved CSS selector.
+   */
+  target?: string
   /** Optional: navigate the Studio here before highlighting this step. */
   navigateTo?: NavTarget
   /** Popover title. */
@@ -45,6 +51,58 @@ export interface TourDefinition {
   driverConfig?: Partial<DriverConfig>
 }
 
+// ─── Per-user progress ────────────────────────────────────────────────────────
+
+export type TourProgressStatus = 'in_progress' | 'completed' | 'incomplete'
+
+/**
+ * One step that was skipped at runtime because its target selector never
+ * resolved in the live DOM — the persistent record of what the console-only
+ * `[tour] skipping step …` warning used to surface. Stored on the play's
+ * progress doc so a broken tour is queryable/visible after the fact (and shows
+ * in the dashboard) instead of relying on someone watching the console.
+ */
+export interface MissedStep {
+  _key?: string
+  /** 0-based index of the skipped step. */
+  stepIndex: number
+  /** Snapshot of the step title (so a later tour edit can't orphan the record). */
+  stepTitle: string
+  /** Authored target key (e.g. "pane-create"), if the step had one. */
+  target?: string
+  /** The resolved CSS selector that didn't match — the actionable "what to fix". */
+  selector?: string
+  /** ISO timestamp of the miss. */
+  at: string
+}
+
+/**
+ * A per-(user × tour) progress record. Written to a PRIVATE add-on dataset (not
+ * the content dataset) because it captures user identity. `tourId`/`tourLabel`
+ * are a string + snapshot, not a reference, so tour edits can't orphan it.
+ */
+export interface TourProgressDoc {
+  _id: string
+  _type: string
+  /** Unique id for this play/run (the last segment of `_id`). */
+  runId?: string
+  user: string
+  userName?: string
+  userEmail?: string
+  tourId: string
+  tourLabel: string
+  workspace: string
+  status: TourProgressStatus
+  /** Last shown step index (0-based). */
+  currentStep: number
+  totalSteps: number
+  startedAt: string
+  updatedAt: string
+  completedAt?: string | null
+  /** Steps skipped this play because their target selector didn't resolve. */
+  missedSteps?: MissedStep[]
+}
+
 // ─── Tour state ─────────────────────────────────────────────────────────────
 
 export interface TourState {
@@ -66,8 +124,72 @@ export interface FieldTargetOption {
   field: string
 }
 
+/**
+ * Per-user progress tracking. Setting `progress` (to `true` or an object) turns
+ * it on: a `studioTourProgress` doc is written per (user × tour) so tours can be
+ * resumed. The live admin dashboard is a separate plugin — `studioTourDashboard()`.
+ *
+ * Progress is stored in a PRIVATE add-on dataset because it captures user
+ * identity (name/email). By default it uses the active dataset's own private
+ * add-on dataset — `<dataset>-comments`, the per-dataset, complimentary dataset
+ * Sanity provisions for Comments/Tasks (it doesn't count toward the plan's
+ * dataset limit). Override `dataset` to point somewhere else. The current user
+ * must have write access to that dataset.
+ */
+export interface TourProgressConfig {
+  /**
+   * Dataset for progress docs. Default: the studio's own (active) content
+   * dataset — a regular dataset governed by project roles, so admins and normal
+   * write-roles can persist progress. Set this to a separate PRIVATE dataset to
+   * keep the user identity (name/email) out of a public content dataset.
+   * (The Comments `<dataset>-comments` add-on dataset can't be used: its managed
+   * grants only permit comment/task types and reject custom types.)
+   */
+  dataset?: string
+  /** `_type` for progress docs. Default `studioTourProgress`. */
+  typeName?: string
+}
+
+/**
+ * Options for the standalone `studioTourDashboard()` plugin. Adding the plugin
+ * registers the live "Tour Progress" tool (it's enabled simply by being added).
+ * The options only need to be set when they were customized on `progress` —
+ * they must point at the same dataset/type the progress writes go to.
+ */
+export interface TourDashboardConfig {
+  /**
+   * Dataset the progress docs live in. Default: the studio's own content
+   * dataset. Match this to `progress.dataset` if that was customized.
+   */
+  dataset?: string
+  /** `_type` of the progress docs. Default `studioTourProgress`. Match `progress.typeName`. */
+  typeName?: string
+  /**
+   * The tour document type to enumerate so EVERY tour is listed (even unplayed
+   * ones). Default `tour`. Match `tourPlugin`'s `schemaTypeName` if you changed it.
+   */
+  schemaTypeName?: string
+  /**
+   * Central-management mode only: set to this workspace's scope key to filter the
+   * dashboard to its tours (+ untagged/global), mirroring `tourPlugin`'s
+   * `workspaceScope`. Out-of-scope tours and their plays are hidden. Omit on a
+   * global-admin workspace (or the simple one-dataset-per-workspace model) to see
+   * every tour.
+   */
+  workspaceScope?: string
+  /**
+   * Restrict who sees the "Tour Progress" tool to users holding one of these
+   * project roles (e.g. `['administrator']`). Omit to show it to everyone. This
+   * is convenience visibility, not a security boundary — dataset permissions
+   * still govern the underlying docs.
+   */
+  roles?: string[]
+}
+
 /** Public plugin options (all optional — the plugin works with no config). */
 export interface StudioTourConfig {
+  /** Per-user progress tracking + resume. `true` enables with defaults; omit to disable. */
+  progress?: boolean | TourProgressConfig
   /** Document types a tour step may open (the reference target list). */
   docTypes?: string[]
   /** Schema-specific field targets shown in a step's highlight dropdown. */
@@ -103,4 +225,18 @@ export interface ResolvedTourConfig {
   workspaceScope: string | null
   /** Whether to show the `workspaces` tagging field on the tour type. */
   showWorkspaceField: boolean
+  /** Resolved per-user progress settings. */
+  progress: ResolvedProgressConfig
+}
+
+/** Resolved per-user progress settings — the runtime slice the client/hooks read. */
+export interface ResolvedProgressConfig {
+  enabled: boolean
+  /**
+   * Dataset progress docs are read/written in.
+   * `null` → use the studio's own (active) content dataset at runtime.
+   */
+  dataset: string | null
+  /** `_type` for progress docs. */
+  typeName: string
 }

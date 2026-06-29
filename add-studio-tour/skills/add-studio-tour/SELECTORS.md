@@ -54,7 +54,7 @@ required for the target to resolve.
 | `tasks` | `[data-testid="tasks-toolbar"]` | Tasks feature enabled (deployed Studio) |
 | `sidebar` | `[data-testid="structure-tool-list-pane"]` | Structure tool |
 | `document-list` | `[data-testid="document-list-pane"]` | a list pane is open |
-| `pane-create` | `[data-testid="pane-header"] [data-testid="action-intent-button"]` | a list pane is open (navigate with `openPath`) |
+| `pane-create` | `[data-testid="pane-header"] [data-testid="action-intent-button"]` | a **document-list** pane is open (navigate with `openPath` — must reach the document-list node, not a parent grouping list; see SKILL.md's per-pane create lesson) |
 | `document-panel` | `[data-testid="document-panel-scroller"]` | a document is open |
 | `pane-header` | `[data-testid="document-pane"] [data-testid="pane-header"]` | a document is open |
 | `breadcrumb` | `[data-testid="document-pane"] [data-testid="document-header-breadcrumb"]` | a document is open |

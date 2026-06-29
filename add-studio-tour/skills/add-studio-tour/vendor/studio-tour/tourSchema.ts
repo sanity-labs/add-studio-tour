@@ -47,6 +47,18 @@ export function createTourType(config: ResolvedTourConfig) {
     name: schemaTypeName,
     title: 'Guided Tour',
     type: 'document',
+    description:
+      'A step-by-step product tour shown in the Studio via popovers. ' +
+      'AUTHORING RULE (open-first): most targets are nested and only exist on ' +
+      'screen after you navigate to them, so a step that highlights one must ' +
+      'open its location first. Per step set AT MOST ONE of: openDocument (for a ' +
+      'field, the title, the Publish button, or the ··· menu — opens the doc and ' +
+      'its parent panes), openPath (to open a structure list pane so its “+” ' +
+      'create button renders), or openTool (to open a named tool like ' +
+      '"presentation"). Precedence if several are set: openDocument > openPath > ' +
+      'openTool. Global chrome (navbar, the global Create button, search) and ' +
+      'intro/copy-only steps need none. The tour re-navigates per step, so EVERY ' +
+      'in-document step needs its own openDocument — not just the first one.',
     fields: [
       defineField({
         name: 'label',
@@ -103,7 +115,15 @@ export function createTourType(config: ResolvedTourConfig) {
                 name: 'target',
                 title: 'Highlight',
                 type: 'string',
-                description: 'What this step points at in the Studio.',
+                description:
+                  'What this step points at in the Studio: a chrome key ' +
+                  '(e.g. navbar, create-button, pane-create, publish-button, ' +
+                  'document-title) or field:<name> (e.g. field:title). Leave ' +
+                  'empty for an intro/copy-only step. If this names something ' +
+                  'nested — a field, publish-button, document-title, pt-editor, ' +
+                  'show-more, or pane-create — the step must also navigate there ' +
+                  'first via one of the “open … first” fields below, or it ' +
+                  'highlights nothing.',
                 options: { list: targetOptions },
               }),
               defineField({
@@ -113,21 +133,41 @@ export function createTourType(config: ResolvedTourConfig) {
                 to: docTypes.map((t) => ({ type: t })),
                 hidden: docTypes.length === 0,
                 description:
-                  'Optional: navigate to this document before highlighting (opens via the edit intent).',
+                  'Open this document before highlighting. REQUIRED for any step ' +
+                  'whose Highlight is a field, the document title, the PT editor, ' +
+                  'the Publish button, or the ··· menu — those only exist once a ' +
+                  'document is open. Opens via the edit intent and also reveals ' +
+                  'the document’s parent panes. Point at a real, stable document; ' +
+                  'every in-document step needs its own reference (the tour ' +
+                  're-navigates per step). Takes precedence over the two fields below.',
               }),
               defineField({
                 name: 'openPath',
                 title: 'Open structure pane first',
                 type: 'string',
                 description:
-                  'Optional: navigate to a workspace-relative router path before this step — use it to reveal a structure list pane (and its "+" create button) that no document/tool opens. Copy everything from "/structure" onward out of the Studio URL, e.g. "/structure/pagesByPath;all-pages-list". Then set Highlight to "pane-create". Used when no document is set above.',
+                  'Open a structure list pane before this step — the way to ' +
+                  'highlight a list’s "+" create button (Highlight = pane-create) ' +
+                  'or the list body (document-list), which no document or tool ' +
+                  'opens. Copy everything from "/structure" onward out of the ' +
+                  'Studio URL, e.g. "/structure/pagesByPath;all-pages-list" ' +
+                  '(workspace-relative; basePath is added for you). MUST resolve ' +
+                  'to an actual document-list pane — only those render the "+" ' +
+                  'create button. In a nested/custom structure, drill ALL the way ' +
+                  'to the document-list node ("…;all-pages-list"); stopping at a ' +
+                  'parent grouping list ("/structure/pagesByPath" alone) opens a ' +
+                  'section pane that lists items but has no "+", so pane-create ' +
+                  'finds nothing. Used only when no openDocument is set above.',
               }),
               defineField({
                 name: 'openTool',
                 title: 'Open tool first',
                 type: 'string',
                 description:
-                  'Optional: navigate to a Studio tool by name (e.g. "presentation", "structure", "vision") before this step. Used when no document or structure pane is set above.',
+                  'Open a Studio tool by name (e.g. "presentation", "structure", ' +
+                  '"vision") before this step — for highlighting a tool’s own UI. ' +
+                  'Lowest precedence: used only when neither openDocument nor ' +
+                  'openPath is set above.',
               }),
               defineField({
                 name: 'side',
