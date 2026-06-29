@@ -81,6 +81,52 @@ export function buildProgressDoc(input: BuildProgressDocInput) {
   }
 }
 
+export interface MissedStepInput {
+  stepIndex: number
+  stepTitle: string
+  target?: string
+  selector?: string
+  /** ISO timestamp — passed in so this stays pure/testable (no Date here). */
+  at: string
+}
+
+/**
+ * Build one `missedSteps[]` entry for a step that was skipped at runtime. The
+ * `_key` is deterministic per step index — paired with the once-per-index guard
+ * in `useTour`, each skipped step is recorded at most once per play, so the key
+ * never collides and the array can't grow unbounded if the user navigates back
+ * and forth.
+ */
+export function missedStepEntry(input: MissedStepInput) {
+  const { stepIndex, stepTitle, target, selector, at } = input
+  return { _key: `miss-${stepIndex}`, stepIndex, stepTitle, target, selector, at }
+}
+
+export interface MissSummary {
+  /** Number of distinct steps skipped across all of a tour's plays. */
+  steps: number
+  /** Distinct target keys that missed (selector as fallback) — for the badge label. */
+  targets: string[]
+}
+
+/**
+ * Aggregate the missed steps across a tour's plays into a compact summary for the
+ * dashboard. Dedupes by step index (a step that misses across many plays counts
+ * once) and collects the distinct target keys, falling back to the selector.
+ */
+export function summarizeMisses(entries: TourProgressDoc[]): MissSummary {
+  const steps = new Set<number>()
+  const targets = new Set<string>()
+  for (const e of entries) {
+    for (const m of e.missedSteps ?? []) {
+      steps.add(m.stepIndex)
+      const label = m.target || m.selector
+      if (label) targets.add(label)
+    }
+  }
+  return { steps: steps.size, targets: [...targets].sort() }
+}
+
 /**
  * The current user's resumable plays — drives the launcher's "Resume". Includes
  * both `in_progress` (actively running / left mid-run) and `incomplete` (closed
@@ -96,7 +142,7 @@ export const COMPLETED_QUERY =
 
 /** Every play doc, most-recent activity first — drives the optional admin dashboard. */
 export const DASHBOARD_QUERY =
-  '*[_type == $type] | order(updatedAt desc){ _id, user, userName, userEmail, tourId, tourLabel, workspace, status, currentStep, totalSteps, startedAt, updatedAt, completedAt }'
+  '*[_type == $type] | order(updatedAt desc){ _id, user, userName, userEmail, tourId, tourLabel, workspace, status, currentStep, totalSteps, startedAt, updatedAt, completedAt, missedSteps }'
 
 /**
  * Every authored tour (published only), label-sorted — so the dashboard can list

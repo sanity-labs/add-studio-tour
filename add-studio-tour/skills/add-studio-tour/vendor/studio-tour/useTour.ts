@@ -142,6 +142,12 @@ export interface TourLifecycle {
   onComplete?: (tour: TourDefinition, runId: string) => void
   /** Fired when the tour is closed before completing, with the last shown index. */
   onLeave?: (tour: TourDefinition, runId: string, stepIndex: number) => void
+  /**
+   * Fired when a step is skipped because its target selector never resolved —
+   * i.e. a broken/out-of-date step. At most once per step index per run (the
+   * caller dedupes), so persisting it can't grow unbounded on back/forth nav.
+   */
+  onMissedStep?: (tour: TourDefinition, runId: string, stepIndex: number) => void
 }
 
 export interface RunOptions {
@@ -205,6 +211,9 @@ export function useTour(options?: TourLifecycle) {
 
       // Dumps the available Studio selectors the first time a step is skipped.
       const dumpSelectors = makeSelectorDumper()
+      // Step indices already reported as missed this run — so a back/forth that
+      // re-skips the same step doesn't record (or re-write) it twice.
+      const missedThisRun = new Set<number>()
 
       const steps: DriveStep[] = tour.steps.map((step) => ({
         element: step.element,
@@ -243,6 +252,12 @@ export function useTour(options?: TourLifecycle) {
 
           console.warn(`[tour] skipping step ${i}: element not found (${step.element})`)
           dumpSelectors()
+          // Persist the miss (once per step index per run) so a broken tour is
+          // visible in the dashboard, not only in this console.
+          if (!missedThisRun.has(i)) {
+            missedThisRun.add(i)
+            options?.onMissedStep?.(tour, runId, i)
+          }
           i += direction
         }
 

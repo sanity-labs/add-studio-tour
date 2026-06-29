@@ -93,6 +93,7 @@ export function TourController({
       onStep: progress.advance,
       onComplete: progress.complete,
       onLeave: progress.leave,
+      onMissedStep: progress.recordMiss,
     }),
     [navigate, progress]
   )

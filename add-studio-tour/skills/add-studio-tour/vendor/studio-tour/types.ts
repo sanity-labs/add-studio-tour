@@ -22,6 +22,12 @@ export type NavTarget =
 export interface TourStep {
   /** CSS selector for the target element inside the Studio. */
   element?: string
+  /**
+   * The authored target key this step points at (e.g. `pane-create`,
+   * `field:title`), carried through from the document so a skipped step can be
+   * reported by the friendly key, not just its resolved CSS selector.
+   */
+  target?: string
   /** Optional: navigate the Studio here before highlighting this step. */
   navigateTo?: NavTarget
   /** Popover title. */
@@ -50,6 +56,27 @@ export interface TourDefinition {
 export type TourProgressStatus = 'in_progress' | 'completed' | 'incomplete'
 
 /**
+ * One step that was skipped at runtime because its target selector never
+ * resolved in the live DOM — the persistent record of what the console-only
+ * `[tour] skipping step …` warning used to surface. Stored on the play's
+ * progress doc so a broken tour is queryable/visible after the fact (and shows
+ * in the dashboard) instead of relying on someone watching the console.
+ */
+export interface MissedStep {
+  _key?: string
+  /** 0-based index of the skipped step. */
+  stepIndex: number
+  /** Snapshot of the step title (so a later tour edit can't orphan the record). */
+  stepTitle: string
+  /** Authored target key (e.g. "pane-create"), if the step had one. */
+  target?: string
+  /** The resolved CSS selector that didn't match — the actionable "what to fix". */
+  selector?: string
+  /** ISO timestamp of the miss. */
+  at: string
+}
+
+/**
  * A per-(user × tour) progress record. Written to a PRIVATE add-on dataset (not
  * the content dataset) because it captures user identity. `tourId`/`tourLabel`
  * are a string + snapshot, not a reference, so tour edits can't orphan it.
@@ -72,6 +99,8 @@ export interface TourProgressDoc {
   startedAt: string
   updatedAt: string
   completedAt?: string | null
+  /** Steps skipped this play because their target selector didn't resolve. */
+  missedSteps?: MissedStep[]
 }
 
 // ─── Tour state ─────────────────────────────────────────────────────────────

@@ -9,6 +9,8 @@ import { test } from 'node:test'
 
 import {
   buildProgressDoc,
+  missedStepEntry,
+  summarizeMisses,
   progressDocId,
   sanitizeIdPart,
   buildTourListQuery,
@@ -76,6 +78,43 @@ test('queries: resume filters to the current user + unfinished (in_progress|inco
   assert.match(RESUME_QUERY, /runId/)
   assert.match(DASHBOARD_QUERY, /order\(updatedAt desc\)/)
   assert.doesNotMatch(DASHBOARD_QUERY, /user == \$user/)
+  // Dashboard fetches missed steps so a broken tour is visible there.
+  assert.match(DASHBOARD_QUERY, /missedSteps/)
+})
+
+test('missedStepEntry: deterministic _key per step index, snapshots title/target/selector + timestamp', () => {
+  const e = missedStepEntry({
+    stepIndex: 2,
+    stepTitle: 'Start a new page',
+    target: 'pane-create',
+    selector: '[data-testid="pane-header"] [data-testid="action-intent-button"]',
+    at: '2026-06-26T00:00:00.000Z',
+  })
+  assert.equal(e._key, 'miss-2')
+  assert.equal(e.stepIndex, 2)
+  assert.equal(e.stepTitle, 'Start a new page')
+  assert.equal(e.target, 'pane-create')
+  assert.equal(e.at, '2026-06-26T00:00:00.000Z')
+  // Same step index → same key, so re-recording a step within a play can't
+  // create a duplicate array entry (paired with useTour's once-per-index guard).
+  assert.equal(missedStepEntry({ stepIndex: 2, stepTitle: 'x', at: 'y' })._key, 'miss-2')
+})
+
+test('summarizeMisses: dedupes step indices across plays, collects distinct targets (selector fallback)', () => {
+  const mk = (missedSteps) => ({
+    _id: '', _type: 'studioTourProgress', user: 'u', tourId: 't', tourLabel: 'T',
+    workspace: 'default', status: 'completed', currentStep: 0, totalSteps: 3,
+    startedAt: '', updatedAt: '', missedSteps,
+  })
+  const s = summarizeMisses([
+    mk([{ stepIndex: 2, stepTitle: 'A', target: 'pane-create', at: '' }]),
+    mk([{ stepIndex: 2, stepTitle: 'A', target: 'pane-create', at: '' }]), // same step, other play → counted once
+    mk([{ stepIndex: 4, stepTitle: 'B', selector: '[data-x]', at: '' }]), // no target → selector fallback
+  ])
+  assert.equal(s.steps, 2) // distinct step indices 2 and 4
+  assert.deepEqual(s.targets, ['[data-x]', 'pane-create'])
+  // No misses anywhere → empty summary.
+  assert.deepEqual(summarizeMisses([mk(undefined)]), { steps: 0, targets: [] })
 })
 
 test('COMPLETED_QUERY: filters to the current user + completed', () => {

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useClient, useCurrentUser, useWorkspace } from 'sanity'
 import {
   buildProgressDoc,
+  missedStepEntry,
   progressDocId,
   buildTourListQuery,
   latestResumableByTour,
@@ -35,6 +36,8 @@ export interface TourProgressApi {
   complete: (tour: TourDefinition, runId: string) => void
   /** User closed the tour before finishing → mark `incomplete` (still resumable). */
   leave: (tour: TourDefinition, runId: string, stepIndex: number) => void
+  /** A step was skipped (its selector didn't resolve) → append it to `missedSteps`. */
+  recordMiss: (tour: TourDefinition, runId: string, stepIndex: number) => void
 }
 
 const NOOP: TourProgressApi = {
@@ -42,6 +45,7 @@ const NOOP: TourProgressApi = {
   advance: () => {},
   complete: () => {},
   leave: () => {},
+  recordMiss: () => {},
 }
 
 // Module-level so a dataset-level problem warns ONCE per dataset+status, not on
@@ -171,6 +175,28 @@ export function useTourProgress(config: ResolvedTourConfig): TourProgressApi {
             .set({ status: 'incomplete', currentStep: stepIndex, updatedAt: now() })
             .commit()
         ),
+      recordMiss: (tour, runId, stepIndex) => {
+        const step = tour.steps[stepIndex]
+        if (!step) return
+        // Deterministic `_key` per step (see missedStepEntry) + the once-per-index
+        // guard in useTour mean this appends each skipped step at most once per play.
+        swallow(
+          client
+            .patch(idOf(tour, runId))
+            .setIfMissing({ missedSteps: [] })
+            .insert('after', 'missedSteps[-1]', [
+              missedStepEntry({
+                stepIndex,
+                stepTitle: step.title,
+                target: step.target,
+                selector: step.element,
+                at: now(),
+              }),
+            ])
+            .set({ updatedAt: now() })
+            .commit()
+        )
+      },
     }
   }, [client, user, workspace, typeName])
 }

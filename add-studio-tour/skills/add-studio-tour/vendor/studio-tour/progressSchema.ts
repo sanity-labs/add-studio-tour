@@ -1,4 +1,4 @@
-import { defineType, defineField } from 'sanity'
+import { defineType, defineField, defineArrayMember } from 'sanity'
 
 /**
  * The `studioTourProgress` document type (default name; override via
@@ -42,6 +42,35 @@ export function createTourProgressType(typeName: string) {
       defineField({ name: 'startedAt', title: 'Started at', type: 'datetime' }),
       defineField({ name: 'updatedAt', title: 'Updated at', type: 'datetime' }),
       defineField({ name: 'completedAt', title: 'Completed at', type: 'datetime' }),
+      defineField({
+        name: 'missedSteps',
+        title: 'Missed steps',
+        description:
+          'Steps skipped at runtime because their target selector did not ' +
+          'resolve in the Studio DOM — i.e. a broken or out-of-date tour step. ' +
+          'Recorded automatically; surfaced in the Tour Progress dashboard.',
+        type: 'array',
+        of: [
+          defineArrayMember({
+            type: 'object',
+            name: 'missedStep',
+            fields: [
+              defineField({ name: 'stepIndex', title: 'Step index', type: 'number' }),
+              defineField({ name: 'stepTitle', title: 'Step title', type: 'string' }),
+              defineField({ name: 'target', title: 'Target key', type: 'string' }),
+              defineField({ name: 'selector', title: 'Resolved selector', type: 'string' }),
+              defineField({ name: 'at', title: 'Missed at', type: 'datetime' }),
+            ],
+            preview: {
+              select: { title: 'stepTitle', target: 'target', index: 'stepIndex' },
+              prepare: ({ title, target, index }) => ({
+                title: title || `Step ${(index ?? 0) + 1}`,
+                subtitle: target ? `missed · ${target}` : 'missed',
+              }),
+            },
+          }),
+        ],
+      }),
     ],
     preview: {
       select: {

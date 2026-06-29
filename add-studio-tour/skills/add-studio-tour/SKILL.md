@@ -418,6 +418,17 @@ state and the dashboard update within ~a second across tabs. Writes are
 client-side and **fail-safe**: if the user can't write or the dataset is missing,
 the tour still runs — progress just no-ops (never throws).
 
+**Missed steps are captured too — so broken tours don't hide in the console.**
+When a step is skipped because its target selector never resolved (the
+`[tour] skipping step …` console warning), the plugin appends it to that play
+doc's `missedSteps[]` — `{ stepIndex, stepTitle, target, selector, at }`, once
+per step per play (fail-safe, like the other writes). The dashboard flags such a
+tour with a ⚠ **"N missed steps · `<target>`"** badge and lists the skipped steps
+under each play, so an out-of-date selector (e.g. a `pane-create` step that stopped
+resolving after a Studio upgrade) is visible after the fact instead of only to
+whoever happened to have the console open. The console dump (`makeSelectorDumper`)
+still fires for live debugging; this just makes the signal durable.
+
 **Where it's stored — the studio's own content dataset by default.** Progress
 docs go in the active (content) dataset, a regular dataset governed by project
 roles, so admins and normal write-roles can persist progress. The

@@ -1,7 +1,7 @@
 import { Badge, Box, Card, Container, Flex, Inline, Spinner, Stack, Text } from '@sanity/ui'
 import { ChevronDownIcon, ChevronRightIcon } from '@sanity/icons'
 import { useMemo, useState } from 'react'
-import { DASHBOARD_QUERY, buildTourGroups } from './progress'
+import { DASHBOARD_QUERY, buildTourGroups, summarizeMisses } from './progress'
 import { useLiveRows, useActiveTours } from './useTourProgress'
 import type { ResolvedProgressConfig, TourProgressDoc, TourProgressStatus } from './types'
 
@@ -95,6 +95,7 @@ export function TourDashboard({
           <Stack space={5}>
             {tours.map((t) => {
               const isCollapsed = !!collapsed[t.id]
+              const misses = summarizeMisses(t.entries)
               return (
                 <Stack key={t.id} space={3}>
                   <Card
@@ -120,6 +121,13 @@ export function TourDashboard({
                       </Text>
                       <Box flex={1} />
                       <Inline space={2}>
+                        {misses.steps > 0 ? (
+                          <Badge tone="critical" mode="outline" fontSize={0}>
+                            ⚠ {misses.steps} missed{' '}
+                            {misses.steps === 1 ? 'step' : 'steps'}
+                            {misses.targets.length ? ` · ${misses.targets.join(', ')}` : ''}
+                          </Badge>
+                        ) : null}
                         {t.counts.in_progress > 0 ? (
                           <Badge tone="primary" mode="outline" fontSize={0}>
                             {t.counts.in_progress} in progress
@@ -161,31 +169,44 @@ export function TourDashboard({
                             const step = Math.min((r.currentStep ?? 0) + 1, total || 1)
                             return (
                               <Card key={r._id} padding={3} radius={2} border>
-                                <Flex align="center" gap={3} wrap="wrap">
-                                  <Box>
-                                    <Badge tone={tone as 'primary'} mode="outline">
-                                      {r.status ? LABEL[r.status] : '—'}
-                                    </Badge>
-                                  </Box>
-                                  <Box>
-                                    <Text size={1} muted>
-                                      Step {step}/{total || '?'}
-                                    </Text>
-                                  </Box>
-                                  {showWorkspace ? (
+                                <Stack space={3}>
+                                  <Flex align="center" gap={3} wrap="wrap">
+                                    <Box>
+                                      <Badge tone={tone as 'primary'} mode="outline">
+                                        {r.status ? LABEL[r.status] : '—'}
+                                      </Badge>
+                                    </Box>
                                     <Box>
                                       <Text size={1} muted>
-                                        {r.workspace || '—'}
+                                        Step {step}/{total || '?'}
                                       </Text>
                                     </Box>
+                                    {showWorkspace ? (
+                                      <Box>
+                                        <Text size={1} muted>
+                                          {r.workspace || '—'}
+                                        </Text>
+                                      </Box>
+                                    ) : null}
+                                    <Box flex={1} />
+                                    <Box>
+                                      <Text size={1} muted>
+                                        {fmt(r.updatedAt)}
+                                      </Text>
+                                    </Box>
+                                  </Flex>
+                                  {r.missedSteps && r.missedSteps.length > 0 ? (
+                                    <Stack space={1}>
+                                      {r.missedSteps.map((m) => (
+                                        <Text key={m._key ?? m.stepIndex} size={0} muted>
+                                          ⚠ skipped step {m.stepIndex + 1}: “{m.stepTitle}”
+                                          {m.target ? ` · ${m.target}` : ''}
+                                          {m.selector ? ` (${m.selector})` : ''}
+                                        </Text>
+                                      ))}
+                                    </Stack>
                                   ) : null}
-                                  <Box flex={1} />
-                                  <Box>
-                                    <Text size={1} muted>
-                                      {fmt(r.updatedAt)}
-                                    </Text>
-                                  </Box>
-                                </Flex>
+                                </Stack>
                               </Card>
                             )
                           })}

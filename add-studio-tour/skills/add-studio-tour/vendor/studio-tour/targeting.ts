@@ -169,6 +169,9 @@ export function mapTour(raw: RawTour, chromeSelectors: Record<string, string>): 
       title: s.title ?? '',
       description: s.description ?? '',
       element: resolveTargetSelector(s.target, chromeSelectors),
+      // Keep the authored key (e.g. "pane-create") alongside the resolved
+      // selector so a skipped step can be reported by its friendly target.
+      target: s.target,
       side: s.side,
       align: s.align,
       delay: s.delay,
