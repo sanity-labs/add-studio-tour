@@ -53,11 +53,20 @@ export function TourDashboard({
   const { rows, loading } = useLiveRows<TourProgressDoc>(progress, DASHBOARD_QUERY, params)
   const { tours: tourRows, loading: toursLoading } = useActiveTours(schemaTypeName, workspaceScope)
 
-  // Every tour → its plays grouped by user (pure, tested in progress.ts). When
-  // scoped, drop orphan plays so out-of-scope tours' plays don't leak in.
+  // Every tour → its plays grouped by user (pure, tested in progress.ts).
+  // "Orphan" plays = plays whose tour isn't in THIS studio's content dataset.
+  // Show them only when progress is co-located in the content dataset (and not
+  // workspace-scoped). When progress lives in a SEPARATE/shared dataset (e.g. a
+  // private progress dataset that several studios write to), an orphan could be
+  // another studio's tour — so scope strictly to this studio's own tours, keeping
+  // one studio's plays out of another's dashboard. Both studios using the same
+  // workspace `name` ("default") makes the per-doc `workspace` field useless as a
+  // discriminator, so we key on the content-dataset tour list instead.
+  // (Trade-off: in that mode, plays of a *deleted* tour aren't shown.)
+  const includeOrphans = !workspaceScope && !progress.dataset
   const tours = useMemo(
-    () => buildTourGroups(tourRows, rows, !workspaceScope),
-    [tourRows, rows, workspaceScope]
+    () => buildTourGroups(tourRows, rows, includeOrphans),
+    [tourRows, rows, includeOrphans]
   )
 
   // Collapsed tours, keyed by tour id. Default expanded (absent = open).
