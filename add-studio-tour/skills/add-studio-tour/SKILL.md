@@ -397,7 +397,7 @@ plugins: [
   tourPlugin({
     docTypes: [...],
     fieldTargets: [...],
-    progress: true,             // or: { dataset, typeName }
+    progress: true,             // or { dataset } — use a PRIVATE dataset if the content dataset is public (PII); see below
   }),
   studioTourDashboard(),                          // tool, visible to everyone
   // studioTourDashboard({ roles: ['administrator'] })  // only admins see the tool
@@ -429,25 +429,55 @@ resolving after a Studio upgrade) is visible after the fact instead of only to
 whoever happened to have the console open. The console dump (`makeSelectorDumper`)
 still fires for live debugging; this just makes the signal durable.
 
-**Where it's stored — the studio's own content dataset by default.** Progress
-docs go in the active (content) dataset, a regular dataset governed by project
-roles, so admins and normal write-roles can persist progress. The
-`studioTourProgress` type is registered but kept out of the editor's way:
-`readOnly`, hidden from global search, filtered out of the global "Create new"
-menu, and not listed in a custom desk structure.
+**Where it's stored — a privacy decision, not just a default.** Progress docs
+capture user **name + email**, so where they live matters. They go in the active
+(content) dataset unless you set `progress.dataset`. Either way the
+`studioTourProgress` type is kept out of the editor's way: `readOnly`, hidden from
+global search, filtered out of the global "Create new" menu, and not listed in a
+custom desk structure.
 
-> ⚠️ **The Comments `<dataset>-comments` add-on dataset CANNOT be used** for this,
-> even though it's private and complimentary. Add-on datasets are provisioned with
-> Sanity-managed grants that only permit the `comment`/task types — writing a
+> ⚠️ **If the content dataset is public, those progress docs are world-readable** —
+> anyone can query the name/email of everyone who ran a tour. Most web-facing
+> projects keep their content dataset public so the frontend can read it without a
+> token, so **the default lands PII in a public dataset.** Treat a dedicated
+> **private** progress dataset as the recommended setup whenever the content
+> dataset is (or might become) public.
+
+**Recommended: a dedicated private dataset.** Create a regular dataset with
+private visibility and point both progress and the dashboard at it:
+
+```sh
+# one-time — from a studio, or via the Sanity MCP create_dataset:
+npx sanity dataset create tour-progress --visibility private
+npx sanity dataset visibility get tour-progress   # confirm → "private"
+```
+
+```ts
+tourPlugin({ /* … */ progress: { dataset: 'tour-progress' } }),
+studioTourDashboard({ roles: ['administrator'], dataset: 'tour-progress' }),
+```
+
+Notes:
+- A shared private dataset can serve several workspaces' tours; **per-workspace**
+  private datasets keep each dashboard from listing the others' plays as orphan
+  rows (the dashboard reads tours from the active content dataset but progress
+  from `progress.dataset`).
+- The private dataset counts toward the plan's dataset limit, but it's the only
+  way to keep the identity data out of public reach.
+- **If progress already ran against a public dataset, delete the existing
+  `studioTourProgress` docs there** — switching `progress.dataset` does not
+  unexpose what's already written.
+- **Verifying "private" is non-obvious:** an anonymous query to a private dataset
+  returns HTTP `200` with results *filtered to empty*, NOT a `401`. So don't infer
+  "public" from a `200` — compare a known-public dataset (returns data) against
+  the target (returns empty), or just trust `sanity dataset visibility get`.
+
+> ⚠️ **A Comments `<dataset>-comments` add-on dataset CANNOT be used** for this,
+> even though it's private and complimentary. Add-on datasets ship with
+> Sanity-managed grants that only permit the `comment`/`task` types — writing a
 > `studioTourProgress` doc there returns **403 for everyone, including admins**
-> (project roles can't widen a managed add-on dataset's grants). This was tried;
-> it doesn't work.
-
-> ⚠️ **Privacy:** progress captures user **name/email**. If the content dataset is
-> **public**, those docs are world-readable. To keep identity private, create a
-> separate **private** dataset and set `progress.dataset` (and the matching
-> `studioTourDashboard({ dataset })`) to it. That dataset counts toward the plan's
-> dataset limit, but is the only way to keep this data private.
+> (project roles can't widen a managed add-on's grants). This was tried; it
+> doesn't work. Use a separate **regular** private dataset.
 
 **Restricting who sees the dashboard.** Pass `studioTourDashboard({ roles:
 ['administrator'] })` — the "Tour Progress" tool is then only registered for users
