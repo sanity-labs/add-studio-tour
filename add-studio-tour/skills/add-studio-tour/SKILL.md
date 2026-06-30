@@ -458,10 +458,15 @@ studioTourDashboard({ roles: ['administrator'], dataset: 'tour-progress' }),
 ```
 
 Notes:
-- A shared private dataset can serve several workspaces' tours; **per-workspace**
-  private datasets keep each dashboard from listing the others' plays as orphan
-  rows (the dashboard reads tours from the active content dataset but progress
-  from `progress.dataset`).
+- A shared private dataset can serve several studios/workspaces' tours. When
+  `progress.dataset` is set, each dashboard automatically **scopes to the tours in
+  its own active content dataset** — so one studio's plays don't show up in
+  another's dashboard, even though they all write to the same progress dataset.
+  (The per-doc `workspace` field can't be relied on for this: studios commonly
+  share the workspace `name` `"default"`. The content-dataset tour list is the
+  discriminator. Trade-off: in this mode the dashboard won't list plays of a
+  *deleted* tour, since it can't tell a deleted tour from another studio's tour by
+  id alone.)
 - The private dataset counts toward the plan's dataset limit, but it's the only
   way to keep the identity data out of public reach.
 - **If progress already ran against a public dataset, delete the existing
