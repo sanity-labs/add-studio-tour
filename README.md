@@ -14,19 +14,13 @@ Tours are authored as content: a **Guided Tour** document type lives in your dat
 > A step's selector is what anchors the popover to the UI. If the Studio layout changes, re-verify selectors so steps don't point at the wrong (or a missing) element.
 
 ### What it looks like
+**Studio Tour Selector**
+<img width="1579" height="949" alt="Screenshot 2026-06-30 at 16 53 15" src="https://github.com/user-attachments/assets/1eab0e1a-cbff-4066-a597-6dbe50de4e2e" />
+**Studio Tour Step**
+<img width="1503" height="934" alt="Screenshot 2026-06-30 at 16 53 34" src="https://github.com/user-attachments/assets/48d78306-303b-4ba5-956f-c6693d9f96e7" />
+**Studio Tour Dashboard**
+<img width="1505" height="806" alt="Screenshot 2026-06-30 at 16 54 18" src="https://github.com/user-attachments/assets/c248b0a4-6689-4f0b-b8a7-081e82bf1c19" />
 
-<!-- IMAGE PLACEHOLDER -->
-<!-- Replace with a screenshot of a tour step popover anchored to the Studio UI.
-     Recommended: PNG/WebP, ~1200px wide. Store under docs/images/. -->
-![Studio tour step popover](docs/images/studio-tour-step.png)
-
-<!-- VIDEO PLACEHOLDER -->
-<!-- Option A — uploaded asset (GitHub renders an inline player for mp4/mov/webm):
-     drag the file into the README in GitHub's editor, or paste the asset URL: -->
-https://github.com/sanity-labs/add-studio-tour/assets/<id>/studio-tour-demo.mp4
-
-<!-- Option B — thumbnail that links out to a hosted recording (Loom/YouTube): -->
-[![Watch the tour walkthrough](docs/images/studio-tour-thumbnail.png)](https://www.loom.com/share/<id>)
 
 ## Install
 
