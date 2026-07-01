@@ -19,7 +19,8 @@ Tours are authored as content: a **Guided Tour** document type lives in your dat
 **Studio Tour Step**
 <img width="1503" height="934" alt="Screenshot 2026-06-30 at 16 53 34" src="https://github.com/user-attachments/assets/48d78306-303b-4ba5-956f-c6693d9f96e7" />
 **Studio Tour Dashboard**
-<img width="1505" height="806" alt="Screenshot 2026-06-30 at 16 54 18" src="https://github.com/user-attachments/assets/c248b0a4-6689-4f0b-b8a7-081e82bf1c19" />
+<img width="1505" height="806" alt="Screenshot 2026-06-30 at 16 54 18" src="https://github.com/user-attachments/assets/50271b0a-404e-49d6-ba8c-57391398b6f6" />
+
 
 
 ## Install
