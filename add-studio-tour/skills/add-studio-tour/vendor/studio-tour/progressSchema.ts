@@ -2,9 +2,9 @@ import { defineType, defineField, defineArrayMember } from 'sanity'
 
 /**
  * The `studioTourProgress` document type (default name; override via
- * `progress.typeName`). It describes the per-(user × tour) progress docs the
- * plugin writes — see `progress.ts` for the shape and `useTourProgress.tsx` for
- * the write side.
+ * `progress.typeName`). It describes the per-play progress docs the plugin
+ * writes (one document per run, keyed by `runId`) — see `progress.ts` for the
+ * shape and `useTourProgress.tsx` for the write side.
  *
  * The docs are written to whichever dataset `progress.dataset` resolves to (by
  * default the studio's own content dataset). This type is kept OUT of the editor's
@@ -25,6 +25,7 @@ export function createTourProgressType(typeName: string) {
       'Per-user tour progress, written automatically when a user starts, ' +
       'advances, or finishes a tour. Not authored by hand.',
     fields: [
+      defineField({ name: 'runId', title: 'Run ID', type: 'string' }),
       defineField({ name: 'user', title: 'User ID', type: 'string' }),
       defineField({ name: 'userName', title: 'User name', type: 'string' }),
       defineField({ name: 'userEmail', title: 'User email', type: 'string' }),

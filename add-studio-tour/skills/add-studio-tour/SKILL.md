@@ -67,9 +67,10 @@ references). A step's `target` is one of these keys **or** `field:<name>`
 
 Each dropdown option is tagged with its **origin** so authors can tell built-in
 targets apart from custom ones: **`— Sanity`** (native Studio testid, shipped in
-`DEFAULT_CHROME_SELECTORS`), **`— Field`** (the plugin's own `data-tour-field`),
-and **`— Studio`** (defined per vertical via `chromeSelectors`/`fieldTargets` in
-that studio's `sanity.config.ts`). See **SELECTORS.md** for the origin legend,
+`DEFAULT_CHROME_SELECTORS`), **`— Field`** (the plugin's own `data-tour-field`,
+including options seeded by `fieldTargets`), and **`— Studio`** (custom chrome
+keys added via `chromeSelectors` in that studio's `sanity.config.ts`). See
+**SELECTORS.md** for the origin legend,
 the full native-target catalog (including ones not in the dropdown), per-target
 "present when" conditions, the studio-specific targets, and the
 extraction/verification recipe to run on each Sanity upgrade.
@@ -80,14 +81,25 @@ Authored tour document shape (what the launcher reads — **published perspectiv
 {
   "_type": "<schemaTypeName>",
   "label": "Welcome to the Studio",
-  "description": "Shown on the launcher card.",
+  "description": "Shown on the launcher card.", // plain text
   "steps": [
     {
       "_type": "tourStep",
-      "title": "...",
-      "description": "...", // basic HTML ok
+      "_key": "s1", // REQUIRED on every array item (steps, and PT blocks/spans)
+      "title": "...", // plain text
+      // Step copy is Portable Text (a block array), NOT a string — rendered
+      // safely (escaped + allowlisted tags), so pasted raw HTML shows as text.
+      "description": [
+        {
+          "_type": "block",
+          "_key": "b1",
+          "style": "normal",
+          "markDefs": [],
+          "children": [{ "_type": "span", "_key": "sp1", "text": "...", "marks": [] }],
+        },
+      ],
       "target": "navbar", // chrome key | "field:title" | omit
-      "openDocument": { "_type": "reference", "_ref": "<docId>" }, // optional
+      "openDocument": { "_type": "reference", "_ref": "<docId>" }, // optional (field only exists when docTypes is non-empty)
       "openPath": "/structure/pagesByPath;all-pages-list", // optional; opens a structure pane (workspace-relative). For pane-create / list targets
       "openTool": "presentation", // optional. Precedence: openDocument > openPath > openTool
       "side": "bottom", // top|right|bottom|left
@@ -97,6 +109,11 @@ Authored tour document shape (what the launcher reads — **published perspectiv
   ],
 }
 ```
+
+> **Migration note:** `description` used to be a free-text string. Tours authored
+> that way still *run* (a string is rendered as an escaped paragraph), but the
+> Studio's Portable Text input will flag the old value as an invalid type until
+> it's re-entered. Re-author those step descriptions as Portable Text.
 
 ---
 
@@ -235,7 +252,7 @@ it into the target Studio's source tree and install only the two runtime deps:
 # from the target Studio root
 mkdir -p src/plugins
 cp -R <path-to-this-skill>/vendor/studio-tour src/plugins/studio-tour
-pnpm add driver.js zustand        # public deps; match the project's package manager
+pnpm add driver.js zustand @sanity/ui @sanity/icons   # match the project's package manager
 ```
 
 That's the whole install. Notes:
@@ -246,10 +263,15 @@ That's the whole install. Notes:
   to the Studio root. There, vendor into `plugins/studio-tour` and import via
   `@/plugins/studio-tour` (Step 3). Look at how an existing local plugin is
   imported and follow that.
-- **`driver.js` + `zustand` are the only deps to add** — they're public packages,
-  not the plugin.
-- **Peer deps are already satisfied** by any Studio: `sanity ^3 || ^4 || ^5`,
-  `@sanity/ui ^2 || ^3`, `react 18 || 19`, `react-dom`, `styled-components ^6.1`.
+- **Install `driver.js`, `zustand`, `@sanity/ui`, and `@sanity/icons`.**
+  `driver.js` and `zustand` are the plugin's own runtime deps. `@sanity/ui` and
+  `@sanity/icons` are imported by the launcher/dashboard; a Studio already pulls
+  them in transitively via `sanity`, but **declaring them directly is required
+  under a strict package manager (pnpm)** — otherwise the vendored files' bare
+  `@sanity/ui` / `@sanity/icons` imports don't resolve. They dedupe to the
+  versions `sanity` already uses, so no version pin is needed.
+- **Other peer deps are already satisfied** by any Studio: `sanity ^3 || ^4 || ^5`,
+  `react 18 || 19`, `react-dom`, `styled-components ^6.1`.
 - **No CSS import or bundler config** — driver.js styles are inlined as a JS
   string in `vendor/studio-tour/driverStyles.ts` and injected at runtime.
 - **A `VERSION` file ships in `vendor/studio-tour/` and is copied with the
@@ -366,13 +388,16 @@ Tours must be **published** — the launcher reads the published perspective onl
 **No write token? Use the Sanity MCP instead.** If `SANITY_WRITE_TOKEN` isn't
 available but the Sanity MCP is connected (`whoami` succeeds), author tours with
 `create_documents` (type `"<schemaTypeName>"`, content = `{label, description, steps}`)
-then `publish_documents`. Tours can have any id — the launcher queries
-`*[_type == "<schemaTypeName>"]` — so the random ids `create_documents` assigns
-are fine (it ignores any `_id` you pass). `edit_document` (to tweak an existing
-tour's `steps`) requires a **deployed schema**; if `get_schema`/`edit_document`
-return "No Sanity schema has been deployed", run `npx sanity schema deploy` from
-the Studio first. Each step's `openDocument` ref must point at a real, existing
-document — author/seed those before publishing the tour.
+then `publish_documents`. Each step's `description` must be **Portable Text** (a
+block array, as in the shape above), not a plain string; every array item —
+`steps[]` and each Portable Text block/span — needs a unique `_key`. Tours can
+have any id — the launcher queries `*[_type == "<schemaTypeName>"]` — so the
+random ids `create_documents` assigns are fine (it ignores any `_id` you pass).
+`patch_documents` (to tweak an existing tour's `steps`) requires a **deployed
+schema**; if `get_schema`/`patch_documents` return "No Sanity schema has been
+deployed", run `npx sanity schema deploy` from the Studio first. Each step's
+`openDocument` ref must point at a real, existing document — author/seed those
+before publishing the tour.
 
 **`openDocument` is a hard reference — reseeds orphan it.** A step's
 `openDocument` stores the target doc's id, so deleting or re-seeding that doc
@@ -410,10 +435,12 @@ plugins: [
 (e.g. two completed runs + one incomplete) instead of the latest run overwriting
 the rest. A fresh start (or **Start over**) mints a new `runId` and doc; each step
 advance patches `currentStep`; finishing sets `completed`, closing early sets
-`incomplete`. **Resume** continues the most-recent unfinished play (same doc);
-completed/incomplete plays remain as history. The launcher shows **"Resume · step
-N/M"** + **Start over** when an unfinished play exists, and a **Completed** pill
-once any play of that tour is done. Reads use the **Live Content API**, so resume
+`incomplete`. **Resume** continues the most-recent **unfinished** play — `incomplete`
+*or* `in_progress` — for a tour; `completed` plays are not resumed. Resumability is
+decided by a tour's *newest* play, so if you **Start over** and then finish, that
+newer completed run supersedes the older unfinished one and Resume no longer offers
+it. The launcher shows **"Resume · step N/M"** + **Start over** when the newest
+play is unfinished, and a **Completed** pill once any play of that tour is done. Reads use the **Live Content API**, so resume
 state and the dashboard update within ~a second across tabs. Writes are
 client-side and **fail-safe**: if the user can't write or the dataset is missing,
 the tour still runs — progress just no-ops (never throws).
@@ -601,20 +628,28 @@ Targeting lessons learned (Sanity v5):
 
 ## Tests (maintainers)
 
-The pure targeting contract — chrome-key resolution, `field:<name>` mapping
-(incl. nested paths), and `mapTour`'s `doc`/`openPath`/`openTool`/neither
-branches (incl. precedence) — lives
-dependency-free in `vendor/studio-tour/targeting.ts` and is covered by
-`tests/targeting.test.ts`. Run them (no extra deps; Node ≥ 22):
+Three pure, dependency-free contracts are tested (no DOM/React/Sanity):
+- **`tests/targeting.test.ts`** → `targeting.ts`: chrome-key resolution,
+  `field:<name>` mapping (incl. nested paths), and `mapTour`'s
+  `doc`/`openPath`/`openTool`/neither branches (incl. precedence).
+- **`tests/progress.test.ts`** → `progress.ts`: the id scheme, start-doc shape,
+  the queries, resume supersession, and the missed-step contract.
+- **`tests/portableText.test.ts`** → `portableText.ts`: the safe HTML serializer
+  (escaping, mark/list rendering, and the **XSS** cases — no author markup executes).
+
+Run all three with **`tsx`**:
 
 ```sh
-node --experimental-strip-types --test tests/targeting.test.ts
-# Node 23.6+: `node --test tests/targeting.test.ts`  ·  or `npx tsx --test tests/targeting.test.ts`
+npx tsx --test tests/*.test.ts
 ```
 
-`tourSchema.ts` (schema) and `useTours.ts` (runtime fetch) re-use `targeting.ts`
-so the tested code is the code that ships. Keep the schema/fetch files free of
-targeting logic so this stays testable.
+Use `tsx` (not `node --experimental-strip-types`): these modules import each
+other with extensionless relative paths (the correct convention for the bundled
+Studio build), which `tsx` resolves but Node's type-stripping loader does not.
+
+`tourSchema.ts` (schema) and `useTours.ts` (runtime fetch) re-use `targeting.ts`,
+and `useTour.ts` re-uses `portableText.ts`, so the tested code is the code that
+ships. Keep the schema/fetch/driver files free of that logic so this stays testable.
 
 ## Step 7 — Revert (if needed)
 

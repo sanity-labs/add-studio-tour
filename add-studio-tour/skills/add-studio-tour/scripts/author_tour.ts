@@ -10,43 +10,71 @@
  *
  * Edit the TOUR constant below to set the steps. Step `target` is a chrome key
  * (navbar | sidebar | document-list | document-panel | publish-button |
- * document-actions) or `field:<name>`; omit it for a copy-only step.
+ * document-actions) or `field:<name>`; omit it for a copy-only step. Any step
+ * that highlights something nested (a field, the title, the publish button, a
+ * list's "+") MUST open its location first — set `openDocument`, `openPath`, or
+ * `openTool` (see the skill's open-first rules). Global chrome (navbar, sidebar,
+ * global create) needs none. Step `description` is Portable Text — use `body()`.
  * For "open a document first", set `openDocument: { _type: 'reference', _ref: '<id>' }`.
  * For "open a tool first" (e.g. presentation), set `openTool: 'presentation'`.
  */
 import { createClient } from '@sanity/client'
+
+// Stable, deterministic `_key`s so re-running createOrReplace produces the same
+// document (idempotent). Sanity requires a `_key` on every array item — steps
+// and Portable Text blocks/spans alike — or the Studio flags "Missing keys".
+let keySeq = 0
+const key = () => `k${(keySeq++).toString(36)}`
+
+/** A single-paragraph Portable Text body from plain text (the step description type). */
+function body(text: string) {
+  return [
+    {
+      _type: 'block',
+      _key: key(),
+      style: 'normal',
+      markDefs: [],
+      children: [{ _type: 'span', _key: key(), text, marks: [] }],
+    },
+  ]
+}
+
+/** Wrap a step object with its `_type` and a unique `_key`. */
+function step(s: Record<string, unknown>) {
+  return { _type: 'tourStep', _key: key(), ...s }
+}
 
 // ─── Edit this ───────────────────────────────────────────────────────────────
 const TOUR = {
   label: 'Welcome to the Studio',
   description: 'A quick guided tour of the essentials.',
   steps: [
-    {
-      _type: 'tourStep',
+    step({
       title: 'The navigation bar',
-      description: 'Switch workspaces and access tools from up here.',
+      description: body('Switch workspaces and access tools from up here.'),
       target: 'navbar',
       side: 'bottom',
       align: 'center',
-    },
-    {
-      _type: 'tourStep',
+    }),
+    step({
       title: 'The content sidebar',
-      description: 'Browse your document types here.',
+      description: body('Browse your document types here.'),
       target: 'sidebar',
       side: 'right',
       align: 'start',
-    },
-    {
-      _type: 'tourStep',
-      title: 'Publishing',
-      description: 'When your edits are ready, publish them from here.',
-      target: 'publish-button',
-      side: 'top',
+    }),
+    step({
+      // Global "Create" is always present and needs no open-first — a safe,
+      // universally-resolvable default. (The old publish-button step targeted a
+      // nested element with no openDocument, so it always stalled and skipped.)
+      title: 'Create content',
+      description: body('Start something new from the global Create button.'),
+      target: 'create-button',
+      side: 'bottom',
       align: 'center',
-    },
+    }),
   ],
-} as const
+}
 // ──────────────────────────────────────────────────────────────────────────────
 
 function arg(flag: string, fallback?: string): string {

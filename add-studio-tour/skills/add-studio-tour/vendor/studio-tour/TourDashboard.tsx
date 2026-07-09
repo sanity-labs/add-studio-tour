@@ -1,7 +1,7 @@
 import { Badge, Box, Card, Container, Flex, Inline, Spinner, Stack, Text } from '@sanity/ui'
 import { ChevronDownIcon, ChevronRightIcon } from '@sanity/icons'
 import { useMemo, useState } from 'react'
-import { DASHBOARD_QUERY, buildTourGroups, summarizeMisses } from './progress'
+import { DASHBOARD_QUERY, DASHBOARD_MAX_ROWS, buildTourGroups, summarizeMisses } from './progress'
 import { useLiveRows, useActiveTours } from './useTourProgress'
 import type { ResolvedProgressConfig, TourProgressDoc, TourProgressStatus } from './types'
 
@@ -90,6 +90,15 @@ export function TourDashboard({
           Tour progress
         </Text>
 
+        {rows.length >= DASHBOARD_MAX_ROWS ? (
+          <Card padding={3} radius={2} tone="caution" border>
+            <Text size={1} muted>
+              Showing the {DASHBOARD_MAX_ROWS.toLocaleString()} most recent plays. Older plays are
+              not loaded.
+            </Text>
+          </Card>
+        ) : null}
+
         {busy ? (
           <Flex padding={5} justify="center">
             <Spinner muted />
@@ -176,6 +185,15 @@ export function TourDashboard({
                             const tone = r.status ? TONE[r.status] : 'default'
                             const total = r.totalSteps || 0
                             const step = Math.min((r.currentStep ?? 0) + 1, total || 1)
+                            // One line per skipped step: a resumed play can record
+                            // the same step index more than once (distinct _keys),
+                            // so collapse by index for display.
+                            const missByIndex = new Map(
+                              (r.missedSteps ?? []).map((m) => [m.stepIndex, m] as const)
+                            )
+                            const misses = [...missByIndex.values()].sort(
+                              (a, b) => a.stepIndex - b.stepIndex
+                            )
                             return (
                               <Card key={r._id} padding={3} radius={2} border>
                                 <Stack space={3}>
@@ -204,10 +222,10 @@ export function TourDashboard({
                                       </Text>
                                     </Box>
                                   </Flex>
-                                  {r.missedSteps && r.missedSteps.length > 0 ? (
+                                  {misses.length > 0 ? (
                                     <Stack space={1}>
-                                      {r.missedSteps.map((m) => (
-                                        <Text key={m._key ?? m.stepIndex} size={0} muted>
+                                      {misses.map((m) => (
+                                        <Text key={m.stepIndex} size={0} muted>
                                           ⚠ skipped step {m.stepIndex + 1}: “{m.stepTitle}”
                                           {m.target ? ` · ${m.target}` : ''}
                                           {m.selector ? ` (${m.selector})` : ''}

@@ -107,9 +107,49 @@ export function createTourType(config: ResolvedTourConfig) {
               defineField({
                 name: 'description',
                 title: 'Step copy',
-                type: 'text',
-                rows: 3,
-                description: 'The popover body. Basic HTML is supported.',
+                type: 'array',
+                description:
+                  'The popover body. Rich text — bold, italic, links, and lists ' +
+                  'are supported. (Authored as Portable Text; rendered safely, so ' +
+                  'pasted raw HTML is shown as text, not executed.)',
+                of: [
+                  defineArrayMember({
+                    type: 'block',
+                    // Keep the toolbar tight for short popover copy.
+                    styles: [
+                      { title: 'Normal', value: 'normal' },
+                      { title: 'Heading', value: 'h3' },
+                      { title: 'Quote', value: 'blockquote' },
+                    ],
+                    lists: [
+                      { title: 'Bulleted', value: 'bullet' },
+                      { title: 'Numbered', value: 'number' },
+                    ],
+                    marks: {
+                      decorators: [
+                        { title: 'Bold', value: 'strong' },
+                        { title: 'Italic', value: 'em' },
+                        { title: 'Code', value: 'code' },
+                      ],
+                      annotations: [
+                        defineArrayMember({
+                          name: 'link',
+                          type: 'object',
+                          title: 'Link',
+                          fields: [
+                            defineField({
+                              name: 'href',
+                              type: 'url',
+                              title: 'URL',
+                              validation: (r) =>
+                                r.uri({ scheme: ['http', 'https', 'mailto', 'tel'] }),
+                            }),
+                          ],
+                        }),
+                      ],
+                    },
+                  }),
+                ],
               }),
               defineField({
                 name: 'target',
@@ -126,21 +166,30 @@ export function createTourType(config: ResolvedTourConfig) {
                   'highlights nothing.',
                 options: { list: targetOptions },
               }),
-              defineField({
-                name: 'openDocument',
-                title: 'Open document first',
-                type: 'reference',
-                to: docTypes.map((t) => ({ type: t })),
-                hidden: docTypes.length === 0,
-                description:
-                  'Open this document before highlighting. REQUIRED for any step ' +
-                  'whose Highlight is a field, the document title, the PT editor, ' +
-                  'the Publish button, or the ··· menu — those only exist once a ' +
-                  'document is open. Opens via the edit intent and also reveals ' +
-                  'the document’s parent panes. Point at a real, stable document; ' +
-                  'every in-document step needs its own reference (the tour ' +
-                  're-navigates per step). Takes precedence over the two fields below.',
-              }),
+              // Only define the reference field when there are doc types to point
+              // at. A `reference` with an empty `to: []` is a schema *error* (not
+              // just a warning) that blocks the whole Studio from loading — and
+              // `docTypes: []` is the documented default. Mirror the conditional
+              // `workspaces` field above rather than relying on `hidden`, which is
+              // a form-only flag and does NOT suppress the schema error.
+              ...(docTypes.length > 0
+                ? [
+                    defineField({
+                      name: 'openDocument',
+                      title: 'Open document first',
+                      type: 'reference',
+                      to: docTypes.map((t) => ({ type: t })),
+                      description:
+                        'Open this document before highlighting. REQUIRED for any step ' +
+                        'whose Highlight is a field, the document title, the PT editor, ' +
+                        'the Publish button, or the ··· menu — those only exist once a ' +
+                        'document is open. Opens via the edit intent and also reveals ' +
+                        'the document’s parent panes. Point at a real, stable document; ' +
+                        'every in-document step needs its own reference (the tour ' +
+                        're-navigates per step). Takes precedence over the two fields below.',
+                    }),
+                  ]
+                : []),
               defineField({
                 name: 'openPath',
                 title: 'Open structure pane first',

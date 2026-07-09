@@ -92,14 +92,16 @@ export interface MissedStepInput {
 
 /**
  * Build one `missedSteps[]` entry for a step that was skipped at runtime. The
- * `_key` is deterministic per step index — paired with the once-per-index guard
- * in `useTour`, each skipped step is recorded at most once per play, so the key
- * never collides and the array can't grow unbounded if the user navigates back
- * and forth.
+ * `_key` combines the step index with the miss timestamp so it is UNIQUE within
+ * a play doc. A bare `miss-<index>` key collided when a *resumed* play (same doc,
+ * same runId) re-missed the same step — Sanity rejects arrays with duplicate
+ * `_key`s. The once-per-index guard in `useTour` still prevents same-run repeats;
+ * this keeps the key valid across resumes (which happen at a different `at`).
  */
 export function missedStepEntry(input: MissedStepInput) {
   const { stepIndex, stepTitle, target, selector, at } = input
-  return { _key: `miss-${stepIndex}`, stepIndex, stepTitle, target, selector, at }
+  const suffix = at.replace(/[^a-zA-Z0-9]/g, '')
+  return { _key: `miss-${stepIndex}-${suffix}`, stepIndex, stepTitle, target, selector, at }
 }
 
 export interface MissSummary {
@@ -128,21 +130,39 @@ export function summarizeMisses(entries: TourProgressDoc[]): MissSummary {
 }
 
 /**
- * The current user's resumable plays — drives the launcher's "Resume". Includes
- * both `in_progress` (actively running / left mid-run) and `incomplete` (closed
- * early); `completed` is excluded. Ordered newest-first so the launcher can take
- * the most-recent unfinished play per tour (and resume that exact run via runId).
+ * Cap on the current user's plays fetched for resume. All statuses are fetched
+ * now (see below) and plays are never pruned, so this bounds a heavy user's
+ * history. It is generous — one user is very unlikely to exceed it — and only the
+ * NEWEST play per tour matters, so a tour whose newest play is older than the cap
+ * simply won't offer Resume (safe degradation, never a wrong resume).
+ */
+export const RESUME_MAX_ROWS = 500
+
+/**
+ * The current user's plays for every tour — drives the launcher's "Resume".
+ * Fetches ALL statuses (not just unfinished) so `latestResumableByTour` can see
+ * when a NEWER completed run supersedes an older unfinished one (Start over →
+ * finish must retire the stale mid-tour Resume). Ordered newest-first and capped;
+ * `status` is projected so the reducer can decide per tour from the most-recent play.
  */
 export const RESUME_QUERY =
-  '*[_type == $type && user == $user && status in ["in_progress", "incomplete"]] | order(updatedAt desc){ tourId, runId, currentStep, totalSteps, updatedAt }'
+  `*[_type == $type && user == $user] | order(updatedAt desc)[0...${RESUME_MAX_ROWS}]{ tourId, runId, currentStep, totalSteps, status, updatedAt }`
 
 /** Tour ids the current user has completed — drives the "Completed" pill in the launcher. */
 export const COMPLETED_QUERY =
   '*[_type == $type && user == $user && status == "completed"]{ tourId }'
 
-/** Every play doc, most-recent activity first — drives the optional admin dashboard. */
+/**
+ * Upper bound on plays the dashboard loads at once. One doc is written per play
+ * and they are never pruned, so an unbounded fetch would grow without limit and
+ * be re-downloaded on every live event. The dashboard surfaces a note when this
+ * cap is hit (see TourDashboard) so the truncation isn't silent.
+ */
+export const DASHBOARD_MAX_ROWS = 2000
+
+/** The most-recent plays (capped at DASHBOARD_MAX_ROWS) — drives the admin dashboard. */
 export const DASHBOARD_QUERY =
-  '*[_type == $type] | order(updatedAt desc){ _id, user, userName, userEmail, tourId, tourLabel, workspace, status, currentStep, totalSteps, startedAt, updatedAt, completedAt, missedSteps }'
+  `*[_type == $type] | order(updatedAt desc)[0...${DASHBOARD_MAX_ROWS}]{ _id, user, userName, userEmail, tourId, tourLabel, workspace, status, currentStep, totalSteps, startedAt, updatedAt, completedAt, missedSteps }`
 
 /**
  * Every authored tour (published only), label-sorted — so the dashboard can list
@@ -165,21 +185,37 @@ export interface ResumablePlay {
 }
 
 /**
- * Reduce the resume query rows (ordered newest-first) to one entry per tour: the
- * most-recent unfinished play. Rows without a `runId` (legacy one-doc-per-tour
- * data) are skipped — they can't be resumed under the per-play model.
+ * Reduce the resume-query rows (ordered newest-first, all statuses) to at most
+ * one resumable play per tour. The NEWEST play for a tour decides: if it is
+ * `completed`, the tour is not resumable (so Start over → finish retires an older
+ * unfinished run); otherwise, if it has a `runId`, that exact play is resumable.
+ * Rows without a `runId` (legacy one-doc-per-tour data) can't be resumed. Once a
+ * tour's newest play has been considered, older plays are ignored — they never
+ * resurrect a stale mid-tour Resume. A status-less row (older callers/tests) is
+ * treated as unfinished, preserving the previous behaviour.
  */
 export function latestResumableByTour(
-  rows: Array<{ tourId?: string; runId?: string; currentStep?: number; totalSteps?: number }>
+  rows: Array<{
+    tourId?: string
+    runId?: string
+    currentStep?: number
+    totalSteps?: number
+    status?: string
+  }>
 ): Record<string, ResumablePlay> {
-  const map: Record<string, ResumablePlay> = {}
+  const map: Record<string, ResumablePlay> = Object.create(null)
+  const decided = new Set<string>()
   for (const row of rows) {
-    if (row?.tourId && row.runId && !(row.tourId in map)) {
-      map[row.tourId] = {
-        runId: row.runId,
-        currentStep: row.currentStep ?? 0,
-        totalSteps: row.totalSteps ?? 0,
-      }
+    const tourId = row?.tourId
+    if (!tourId || decided.has(tourId)) continue
+    // The most-recent play for this tour is authoritative.
+    decided.add(tourId)
+    if (row.status === 'completed') continue // newest run finished → nothing to resume
+    if (!row.runId) continue // unfinished but unresumable (legacy row)
+    map[tourId] = {
+      runId: row.runId,
+      currentStep: row.currentStep ?? 0,
+      totalSteps: row.totalSteps ?? 0,
     }
   }
   return map

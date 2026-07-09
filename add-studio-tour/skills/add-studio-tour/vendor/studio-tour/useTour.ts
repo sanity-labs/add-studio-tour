@@ -4,6 +4,7 @@ import { driver } from 'driver.js'
 import type { DriveStep, Driver } from 'driver.js'
 import type { NavTarget, TourDefinition, TourStep } from './types'
 import { ensureDriverStyles } from './driverStyles'
+import { escapeHtml } from './portableText'
 import { useTourStore } from './store'
 
 /**
@@ -73,6 +74,10 @@ async function scrollIntoViewAndSettle(el: Element): Promise<void> {
  * never appeared and the step should be skipped.
  */
 async function settleStep(step: TourStep): Promise<boolean> {
+  // A target was authored but maps to no selector (unknown/removed chrome key):
+  // treat as a miss immediately — don't burn 6s waiting on a selector that can't
+  // exist, and don't fall through to the "no element → centered popover" path.
+  if (step.unresolvedTarget) return false
   if (step.element) {
     // 6s (not 3s): reference/array fields mount their wrapper later than scalar
     // fields while previews resolve, and a cold document open can be slow.
@@ -169,6 +174,11 @@ export function useTour(options?: TourLifecycle) {
   const lastIndexRef = useRef(0)
   // The active play's run id, threaded into every progress lifecycle callback.
   const runIdRef = useRef<string>('')
+  // Bumped on every run(), and on stop()/close/workspace-change. The async step
+  // loop captures the generation it started under and bails after each await if
+  // it no longer matches — so a tour closed mid-settle can't later revive the
+  // destroyed driver (zombie overlay) or patch progress back to in_progress.
+  const runGenRef = useRef(0)
   const startTour = useTourStore((s) => s.startTour)
   const stopTour = useTourStore((s) => s.stopTour)
   const setStep = useTourStore((s) => s.setStep)
@@ -179,6 +189,9 @@ export function useTour(options?: TourLifecycle) {
   // nodes from the previous workspace's view. Tear it down cleanly.
   useEffect(() => {
     return () => {
+      // Invalidate any in-flight run so a pending settle can't touch the
+      // torn-down driver after the workspace changes.
+      runGenRef.current++
       driverRef.current?.destroy()
       driverRef.current = null
     }
@@ -191,7 +204,9 @@ export function useTour(options?: TourLifecycle) {
       ensureDriverStyles()
       startTour(tour.id)
 
-      // Reset per-run outcome tracking.
+      // Reset per-run outcome tracking. Bump the generation so any earlier run's
+      // in-flight settle is invalidated and this run owns the driver.
+      const myGen = ++runGenRef.current
       outcomeRef.current = 'running'
       activeTourRef.current = tour
       // Resume passes the unfinished play's runId; a fresh run mints a new one
@@ -214,11 +229,17 @@ export function useTour(options?: TourLifecycle) {
       // Step indices already reported as missed this run — so a back/forth that
       // re-skips the same step doesn't record (or re-write) it twice.
       const missedThisRun = new Set<number>()
+      // Whether any step was actually shown this run. Guards against recording a
+      // false "completed" when every step's target missed (nothing was seen).
+      let shownAny = false
 
       const steps: DriveStep[] = tour.steps.map((step) => ({
         element: step.element,
         popover: {
-          title: step.title,
+          // Title is plain text → escape before driver.js innerHTMLs it, so a
+          // title can't inject markup. Description is already safe HTML (built by
+          // portableTextToSafeHtml in mapTour from the authored Portable Text).
+          title: escapeHtml(step.title),
           description: step.description,
           side: step.side ?? 'bottom',
           // driver.js defaults align to 'start', which left-aligns the popover
@@ -238,19 +259,31 @@ export function useTour(options?: TourLifecycle) {
 
           if (step.navigateTo && options?.onBeforeStep) {
             await options.onBeforeStep(step.navigateTo, i)
+            // Bailed: the run was stopped/closed/superseded while navigating.
+            if (runGenRef.current !== myGen) return
           }
 
-          if (await settleStep(step)) {
+          const showable = await settleStep(step)
+          // Bailed: closed mid-settle. Returning here is what prevents the zombie
+          // overlay and the stray in_progress patch after onLeave already fired.
+          if (runGenRef.current !== myGen) return
+
+          if (showable) {
             if (driverRef.current?.isActive()) driverRef.current.moveTo(i)
             else driverRef.current?.drive(i)
             setStep(i)
             lastIndexRef.current = i
+            shownAny = true
             if (!(skipInitialStepWrite && i === 0)) options?.onStep?.(tour, runId, i)
             skipInitialStepWrite = false
             return
           }
 
-          console.warn(`[tour] skipping step ${i}: element not found (${step.element})`)
+          console.warn(
+            `[tour] skipping step ${i}: ${
+              step.element ? `element not found (${step.element})` : `unknown target "${step.target}"`
+            }`
+          )
           dumpSelectors()
           // Persist the miss (once per step index per run) so a broken tour is
           // visible in the dashboard, not only in this console.
@@ -261,11 +294,20 @@ export function useTour(options?: TourLifecycle) {
           i += direction
         }
 
-        // Ran off an end with nothing showable. Forward → the user advanced past
-        // the last step, so the tour is complete; backward → just stop.
+        // Ran off an end with nothing showable.
         if (direction === 1 && outcomeRef.current === 'running') {
-          outcomeRef.current = 'completed'
-          options?.onComplete?.(tour, runId)
+          if (shownAny || startAt > 0) {
+            // Forward past the last shown step (or a genuine resume) → complete.
+            outcomeRef.current = 'completed'
+            options?.onComplete?.(tour, runId)
+          } else {
+            // Every step's target missed and nothing was ever shown — do NOT
+            // claim completion (that would light a false green "Completed" pill
+            // and inflate the dashboard). Record it incomplete; the per-step
+            // misses were already captured, so the breakage is visible.
+            outcomeRef.current = 'left'
+            options?.onLeave?.(tour, runId, 0)
+          }
         }
         driverRef.current?.destroy()
         driverRef.current = null
@@ -296,15 +338,18 @@ export function useTour(options?: TourLifecycle) {
         },
 
         onDestroyStarted: () => {
-          // Fired when the user closes the tour (X / overlay / Esc). If it didn't
-          // already complete, record it as incomplete at the last shown step
-          // (still resumable — not abandoned).
+          // Fired when the user closes the tour (X / overlay / Esc). Invalidate
+          // the run first so any in-flight settle bails instead of reviving the
+          // driver after we tear it down. If it didn't already complete, record
+          // it incomplete at the last shown step (still resumable — not abandoned).
+          runGenRef.current++
           if (outcomeRef.current === 'running') {
             outcomeRef.current = 'left'
             if (activeTourRef.current)
               options?.onLeave?.(activeTourRef.current, runIdRef.current, lastIndexRef.current)
           }
           driverRef.current?.destroy()
+          driverRef.current = null
           stopTour()
         },
       })
@@ -317,6 +362,8 @@ export function useTour(options?: TourLifecycle) {
 
   const stop = useCallback(() => {
     // Manual stop (e.g. the navbar "Stop tour" button) marks the tour incomplete.
+    // Invalidate the run so any in-flight settle bails and can't re-drive.
+    runGenRef.current++
     if (outcomeRef.current === 'running') {
       outcomeRef.current = 'left'
       if (activeTourRef.current)

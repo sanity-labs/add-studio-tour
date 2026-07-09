@@ -136,10 +136,61 @@ test('mapTour: precedence doc > openPath > openTool', () => {
   assert.deepEqual(b.steps[0].navigateTo, { kind: 'doc', id: 'd', type: 'y' })
 })
 
-test('mapTour: neither doc nor openTool → navigateTo undefined; no target → element undefined', () => {
+test('mapTour: neither doc nor openTool → navigateTo undefined; no target → element undefined + not unresolved', () => {
   const t = mapTour({ _id: 'a', steps: [{ title: 'S' }] }, DEFAULT_CHROME_SELECTORS)
   assert.equal(t.steps[0].navigateTo, undefined)
   assert.equal(t.steps[0].element, undefined)
+  // A copy-only step (no target) is NOT a miss.
+  assert.equal(t.steps[0].unresolvedTarget, false)
+})
+
+test('mapTour: an authored target that maps to no selector is flagged unresolvedTarget (a broken step, not a centered popover)', () => {
+  const t = mapTour(
+    { _id: 'a', steps: [{ title: 'S', target: '__does_not_exist__' }] },
+    DEFAULT_CHROME_SELECTORS
+  )
+  assert.equal(t.steps[0].element, undefined)
+  assert.equal(t.steps[0].unresolvedTarget, true)
+})
+
+test('mapTour: a resolvable chrome key / field target is NOT flagged unresolved', () => {
+  const t = mapTour(
+    {
+      _id: 'a',
+      steps: [
+        { title: 'A', target: 'navbar' },
+        { title: 'B', target: 'field:title' },
+      ],
+    },
+    DEFAULT_CHROME_SELECTORS
+  )
+  assert.equal(t.steps[0].unresolvedTarget, false)
+  assert.equal(t.steps[1].unresolvedTarget, false)
+})
+
+test('mapTour: Portable Text description → safe HTML; a plain string is escaped (back-compat)', () => {
+  const t = mapTour(
+    {
+      _id: 'a',
+      steps: [
+        {
+          title: 'S1',
+          description: [
+            {
+              _type: 'block',
+              style: 'normal',
+              children: [{ _type: 'span', text: 'Hello ' }, { _type: 'span', text: 'bold', marks: ['strong'] }],
+            },
+          ],
+        },
+        // Legacy string with markup → escaped, never executed.
+        { title: 'S2', description: '<img src=x onerror=alert(1)>' },
+      ],
+    },
+    DEFAULT_CHROME_SELECTORS
+  )
+  assert.equal(t.steps[0].description, '<p>Hello <strong>bold</strong></p>')
+  assert.equal(t.steps[1].description, '<p>&lt;img src=x onerror=alert(1)&gt;</p>')
 })
 
 test('workspaceScopeFilter: no scope → empty (every tour shows)', () => {
