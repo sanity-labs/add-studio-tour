@@ -28,11 +28,21 @@ export interface TourStep {
    * reported by the friendly key, not just its resolved CSS selector.
    */
   target?: string
+  /**
+   * True when the step authored a `target` that resolved to no selector (an
+   * unknown/removed chrome key). The runtime treats it as a miss — records
+   * telemetry and skips — rather than rendering a misleading centered popover.
+   */
+  unresolvedTarget?: boolean
   /** Optional: navigate the Studio here before highlighting this step. */
   navigateTo?: NavTarget
-  /** Popover title. */
+  /** Popover title (plain text — escaped before it reaches driver.js). */
   title: string
-  /** Popover body (supports basic HTML). */
+  /**
+   * Popover body as SAFE HTML, serialized from the authored Portable Text by
+   * `portableTextToSafeHtml` (escaped text + an allowlist of tags). Never raw
+   * author-supplied HTML — that would be an innerHTML XSS sink in driver.js.
+   */
   description: string
   /** Which side of the element to place the popover (driver.js may auto-flip). */
   side?: 'top' | 'right' | 'bottom' | 'left'
@@ -77,9 +87,12 @@ export interface MissedStep {
 }
 
 /**
- * A per-(user × tour) progress record. Written to a PRIVATE add-on dataset (not
- * the content dataset) because it captures user identity. `tourId`/`tourLabel`
- * are a string + snapshot, not a reference, so tour edits can't orphan it.
+ * One progress record PER PLAY (per run) — not per (user × tour). It captures
+ * user identity (id/name/email), so where it is stored is a privacy decision:
+ * by default it goes in the studio's own (content) dataset; point
+ * `progress.dataset` at a private dataset to keep identity out of a public one.
+ * `tourId`/`tourLabel` are a string + snapshot, not a reference, so tour
+ * edits/reseeds can't orphan it.
  */
 export interface TourProgressDoc {
   _id: string
@@ -126,15 +139,18 @@ export interface FieldTargetOption {
 
 /**
  * Per-user progress tracking. Setting `progress` (to `true` or an object) turns
- * it on: a `studioTourProgress` doc is written per (user × tour) so tours can be
- * resumed. The live admin dashboard is a separate plugin — `studioTourDashboard()`.
+ * it on: a `studioTourProgress` doc is written per PLAY (per run) so tours can be
+ * resumed and replays are kept as history. The live admin dashboard is a separate
+ * plugin — `studioTourDashboard()`.
  *
- * Progress is stored in a PRIVATE add-on dataset because it captures user
- * identity (name/email). By default it uses the active dataset's own private
- * add-on dataset — `<dataset>-comments`, the per-dataset, complimentary dataset
- * Sanity provisions for Comments/Tasks (it doesn't count toward the plan's
- * dataset limit). Override `dataset` to point somewhere else. The current user
- * must have write access to that dataset.
+ * These docs capture user identity (name/email). By default they go in the
+ * studio's own (active) content dataset — a regular dataset governed by project
+ * roles, so admins and normal write-roles can persist progress. If that dataset
+ * is (or may become) public, set `dataset` to a separate PRIVATE dataset so the
+ * identity data isn't world-readable. The current user must have write access to
+ * whichever dataset is used. (A Comments `<dataset>-comments` add-on dataset
+ * CANNOT be used — its managed grants only permit comment/task types and reject
+ * `studioTourProgress`, returning 403 even for admins.)
  */
 export interface TourProgressConfig {
   /**

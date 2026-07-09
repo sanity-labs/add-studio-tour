@@ -5,7 +5,7 @@
 # detect drift. `version` is the plugin's logical version — bump it when the
 # plugin SOURCE changes (not on a reformat). `synced`, `source-commit`, and
 # `files` are stamped automatically by scripts/sync_vendor.sh.
-version: 3.3.1
-synced: 2026-06-26
-source-commit: unknown
-files: 15
+version: 3.4.0
+synced: 2026-07-09
+source-commit: 7496236
+files: 17

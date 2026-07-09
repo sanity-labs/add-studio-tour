@@ -67,22 +67,27 @@ test('buildProgressDoc: in_progress at step 0, stores runId, snapshots tour labe
   assert.ok(!('_ref' in (doc as Record<string, unknown>)))
 })
 
-test('queries: resume filters to the current user + unfinished (in_progress|incomplete), newest-first with runId; dashboard is unfiltered', () => {
+test('queries: resume filters to the current user (all statuses, newest-first, with runId+status); dashboard is unfiltered + capped', () => {
   assert.match(RESUME_QUERY, /_type == \$type/)
   assert.match(RESUME_QUERY, /user == \$user/)
-  // Resumable = not completed: both in_progress and incomplete plays show up.
-  assert.match(RESUME_QUERY, /status in \["in_progress", "incomplete"\]/)
-  assert.doesNotMatch(RESUME_QUERY, /"completed"/)
-  // Ordered newest-first and returns runId so the launcher resumes the latest play.
+  // ALL statuses are fetched (no status filter) so a newer completed run can
+  // supersede an older unfinished one — the fix for stale "Resume".
+  assert.doesNotMatch(RESUME_QUERY, /status in \[/)
+  // Ordered newest-first and projects runId + status so the reducer can decide.
   assert.match(RESUME_QUERY, /order\(updatedAt desc\)/)
   assert.match(RESUME_QUERY, /runId/)
+  assert.match(RESUME_QUERY, /status/)
+  // Bounded too — fetching all statuses could otherwise grow with a user's history.
+  assert.match(RESUME_QUERY, /\[0\.\.\.\d+\]/)
   assert.match(DASHBOARD_QUERY, /order\(updatedAt desc\)/)
   assert.doesNotMatch(DASHBOARD_QUERY, /user == \$user/)
   // Dashboard fetches missed steps so a broken tour is visible there.
   assert.match(DASHBOARD_QUERY, /missedSteps/)
+  // Dashboard is bounded (slice) so it can't grow unbounded / re-download all.
+  assert.match(DASHBOARD_QUERY, /\[0\.\.\.\d+\]/)
 })
 
-test('missedStepEntry: deterministic _key per step index, snapshots title/target/selector + timestamp', () => {
+test('missedStepEntry: unique, id-safe _key per (step index, timestamp); snapshots fields', () => {
   const e = missedStepEntry({
     stepIndex: 2,
     stepTitle: 'Start a new page',
@@ -90,14 +95,19 @@ test('missedStepEntry: deterministic _key per step index, snapshots title/target
     selector: '[data-testid="pane-header"] [data-testid="action-intent-button"]',
     at: '2026-06-26T00:00:00.000Z',
   })
-  assert.equal(e._key, 'miss-2')
+  assert.match(e._key, /^miss-2-/)
+  // _key must contain only Sanity-id-safe characters.
+  assert.match(e._key, /^[a-zA-Z0-9_-]+$/)
   assert.equal(e.stepIndex, 2)
   assert.equal(e.stepTitle, 'Start a new page')
   assert.equal(e.target, 'pane-create')
   assert.equal(e.at, '2026-06-26T00:00:00.000Z')
-  // Same step index → same key, so re-recording a step within a play can't
-  // create a duplicate array entry (paired with useTour's once-per-index guard).
-  assert.equal(missedStepEntry({ stepIndex: 2, stepTitle: 'x', at: 'y' })._key, 'miss-2')
+  // Same index re-missed at a DIFFERENT time (e.g. after resume) → a DIFFERENT
+  // key, so a resumed play can't produce two array items with the same _key
+  // (which Sanity rejects). The once-per-index guard still prevents same-run dups.
+  const later = missedStepEntry({ stepIndex: 2, stepTitle: 'x', at: '2026-06-26T01:00:00.000Z' })
+  assert.match(later._key, /^miss-2-/)
+  assert.notEqual(e._key, later._key)
 })
 
 test('summarizeMisses: dedupes step indices across plays, collects distinct targets (selector fallback)', () => {
@@ -144,6 +154,28 @@ test('latestResumableByTour: most-recent play per tour; skips rows without runId
   assert.deepEqual(Object.keys(map).sort(), ['a', 'c'])
   assert.equal(map.a.runId, 'a2')
   assert.equal(map.a.currentStep, 5)
+})
+
+test('latestResumableByTour: newest completed play supersedes an older unfinished one', () => {
+  const map = latestResumableByTour([
+    // Tour a: Started over and finished → newest play completed, so NOT resumable
+    // even though an older incomplete play exists (the stale-resume bug fix).
+    { tourId: 'a', runId: 'a2', currentStep: 7, totalSteps: 8, status: 'completed' },
+    { tourId: 'a', runId: 'a1', currentStep: 3, totalSteps: 8, status: 'incomplete' },
+    // Tour b: newest play still unfinished → resumable.
+    { tourId: 'b', runId: 'b1', currentStep: 2, totalSteps: 5, status: 'incomplete' },
+  ])
+  assert.deepEqual(Object.keys(map).sort(), ['b'])
+  assert.equal(map.b.runId, 'b1')
+  assert.equal(map.b.currentStep, 2)
+})
+
+test('latestResumableByTour: prototype-named tour ids are handled (null-proto map)', () => {
+  const map = latestResumableByTour([
+    { tourId: 'toString', runId: 'r1', currentStep: 1, totalSteps: 2, status: 'in_progress' },
+  ])
+  assert.equal(map.toString?.runId, 'r1')
+  assert.deepEqual(Object.keys(map), ['toString'])
 })
 
 test('buildTourGroups: lists every tour (even unplayed), groups plays by user, tallies status', () => {

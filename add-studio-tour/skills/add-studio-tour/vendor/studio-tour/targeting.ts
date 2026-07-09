@@ -1,4 +1,5 @@
 import type { NavTarget, TourDefinition } from './types'
+import { portableTextToSafeHtml } from './portableText'
 
 /**
  * Pure targeting logic for the tour plugin — NO React or Sanity imports, so it
@@ -136,7 +137,12 @@ export function workspaceScopeFilter(scope: string | null): string {
 
 export interface RawStep {
   title?: string
-  description?: string
+  /**
+   * Step copy as authored. Normally Portable Text (a block array); a plain string
+   * is tolerated for tours authored under the old free-text field. `mapTour`
+   * serializes it to safe HTML via `portableTextToSafeHtml`.
+   */
+  description?: unknown
   target?: string
   side?: TourDefinition['steps'][number]['side']
   align?: TourDefinition['steps'][number]['align']
@@ -164,24 +170,37 @@ export function mapTour(raw: RawTour, chromeSelectors: Record<string, string>): 
   return {
     id: raw._id,
     label: raw.label ?? '(untitled tour)',
-    description: raw.description ?? '',
-    steps: (raw.steps ?? []).map((s) => ({
-      title: s.title ?? '',
-      description: s.description ?? '',
-      element: resolveTargetSelector(s.target, chromeSelectors),
-      // Keep the authored key (e.g. "pane-create") alongside the resolved
-      // selector so a skipped step can be reported by its friendly target.
-      target: s.target,
-      side: s.side,
-      align: s.align,
-      delay: s.delay,
-      navigateTo: s.doc
-        ? ({ kind: 'doc', id: s.doc._id, type: s.doc._type } satisfies NavTarget)
-        : s.openPath
-          ? ({ kind: 'path', path: s.openPath } satisfies NavTarget)
-          : s.openTool
-            ? ({ kind: 'tool', tool: s.openTool } satisfies NavTarget)
-            : undefined,
-    })),
+    // Tour-level description is plain text (rendered by React, which escapes it).
+    description: typeof raw.description === 'string' ? raw.description : '',
+    steps: (raw.steps ?? []).map((s) => {
+      const element = resolveTargetSelector(s.target, chromeSelectors)
+      const hasTarget = !!(typeof s.target === 'string' && s.target.trim())
+      return {
+        title: s.title ?? '',
+        // Serialized to SAFE HTML here (escaped text + allowlisted tags), because
+        // this string is later handed to driver.js's innerHTML popover body.
+        description: portableTextToSafeHtml(s.description),
+        element,
+        // Keep the authored key (e.g. "pane-create") alongside the resolved
+        // selector so a skipped step can be reported by its friendly target.
+        target: s.target,
+        // A target was authored but resolved to no selector → an unknown/removed
+        // chrome key (a broken step), NOT a deliberate copy-only step. Flag it so
+        // the runtime records a miss instead of silently showing a centered
+        // popover and losing the telemetry. (`field:*` always resolves, so this
+        // only ever trips on a bad chrome key.)
+        unresolvedTarget: hasTarget && !element,
+        side: s.side,
+        align: s.align,
+        delay: s.delay,
+        navigateTo: s.doc
+          ? ({ kind: 'doc', id: s.doc._id, type: s.doc._type } satisfies NavTarget)
+          : s.openPath
+            ? ({ kind: 'path', path: s.openPath } satisfies NavTarget)
+            : s.openTool
+              ? ({ kind: 'tool', tool: s.openTool } satisfies NavTarget)
+              : undefined,
+      }
+    }),
   }
 }

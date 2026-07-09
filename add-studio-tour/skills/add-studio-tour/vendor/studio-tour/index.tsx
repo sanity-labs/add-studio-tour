@@ -39,7 +39,9 @@ export { DEFAULT_CHROME_SELECTORS } from './tourSchema'
  */
 export const studioTourPlugin = definePlugin<StudioTourConfig | void>((config) => {
   // Per-user progress: `progress: true` enables with defaults; an object
-  // customizes. Stored in a PRIVATE add-on dataset (default `comments`).
+  // customizes. Stored in the studio's own content dataset by default; set
+  // `progress.dataset` to a private dataset to keep user identity out of a
+  // public one (see TourProgressConfig).
   const progressInput = config?.progress
   const progressObj = typeof progressInput === 'object' && progressInput ? progressInput : {}
   const progress: ResolvedProgressConfig = {

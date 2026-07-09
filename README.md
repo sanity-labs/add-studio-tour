@@ -2,11 +2,11 @@
 
 Guided product tours for **Sanity Studio**, packaged as a standalone [Claude Code](https://claude.com/claude-code) plugin. It installs and wires [`sanity-plugin-studio-tour`](#) into an existing Studio: vendors the plugin, adds `tourPlugin` to the chosen workspaces, patches the desk structure so the Guided Tour type is browsable, authors a starter tour, and verifies selectors against the running Studio.
 
-The plugin code ships **vendored** inside the skill (`skills/add-studio-tour/vendor/studio-tour`, currently studio-tour **v1.8.0**), so each Studio that installs the skill gets its own copy to adapt — no central runtime dependency to version or maintain.
+The plugin code ships **vendored** inside the skill (`skills/add-studio-tour/vendor/studio-tour`; the exact version is stamped in that folder's `VERSION` file), so each Studio that installs the skill gets its own copy to adapt — no central runtime dependency to version or maintain.
 
 ## What is a Studio tour?
 
-A **Studio tour** is a guided, step-by-step walkthrough that runs *inside* Sanity Studio. Each tour is an ordered set of steps; every step points at a real element of the Studio UI (via a CSS selector) and shows a small popover with a title, description, and optional media. Editors advance through the steps to learn where things live and how a workflow is meant to be done — onboarding, feature announcements, or "how we use this Studio" guidance — without leaving the app.
+A **Studio tour** is a guided, step-by-step walkthrough that runs *inside* Sanity Studio. Each tour is an ordered set of steps; every step points at a real element of the Studio UI (via a CSS selector) and shows a small popover with a title and a rich-text description (bold, links, lists). Editors advance through the steps to learn where things live and how a workflow is meant to be done — onboarding, feature announcements, or "how we use this Studio" guidance — without leaving the app.
 
 Tours are authored as content: a **Guided Tour** document type lives in your dataset, so non-developers can write, reorder, and publish steps from the Studio itself. Only published tours appear to editors.
 

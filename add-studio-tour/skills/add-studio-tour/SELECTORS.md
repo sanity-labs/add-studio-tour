@@ -20,7 +20,7 @@ The authoring dropdown shows the same tag as a `— Origin` suffix on each optio
 | --- | --- | --- |
 | **Sanity** | Native Studio target — selects a `data-testid` that Sanity core renders. Ships in the plugin's `DEFAULT_CHROME_SELECTORS`. | Internal API; re-verify on each Sanity upgrade. |
 | **Field** | The plugin's own `data-tour-field="<name>"` (added by `TourField`). Authored as `field:<name>`. | Stable — owned by this plugin. |
-| **Studio** | Defined per vertical via `chromeSelectors` / `fieldTargets` in that studio's `sanity.config.ts`. Usually selects a native testid, but the *key* is project-specific. | Owned by the studio; selector still depends on Sanity internals. |
+| **Studio** | A custom chrome key added via `chromeSelectors` in that studio's `sanity.config.ts`. (Options seeded by `fieldTargets` are tagged **Field**, not Studio.) Usually selects a native testid, but the *key* is project-specific. | Owned by the studio; selector still depends on Sanity internals. |
 
 ## Two hard-won rules
 
@@ -72,15 +72,15 @@ runtime).
 
 ## Studio-specific targets (Origin: Studio)
 
-Defined per vertical in that studio's `sanity.config.ts` via `chromeSelectors` /
-`fieldTargets`, merged on top of the defaults. They appear in the dropdown tagged
-`— Studio`.
+Custom chrome keys added via `chromeSelectors` in that studio's
+`sanity.config.ts` (merged on top of the defaults) appear in the dropdown tagged
+`— Studio`. Options seeded by `fieldTargets` are tagged **`— Field`** (they
+resolve to the plugin's own `data-tour-field`), **not** `— Studio`.
 
-Today the commerce and marketing verticals add **only `fieldTargets`** (which
-seed the `field:<name>` dropdown options) — no custom `chromeSelectors`. The
-former `create-document` / `create-page` overrides were removed in favour of the
-native `create-button` / `pane-create` keys (the old `create-page` was also
-unscoped, exposing it to the per-pane collision bug).
+A studio that only sets `fieldTargets` (to seed the `field:<name>` dropdown) adds
+no `— Studio` targets at all. Prefer the native `create-button` / `pane-create`
+keys over a custom unscoped create override (an unscoped create selector is
+exposed to the per-pane collision bug).
 
 > When you add a studio-specific selector, scope it the same way the native ones
 > are (a `[data-testid="…-pane"]` container prefix) and follow the verification
@@ -126,7 +126,7 @@ they make poor general-purpose dropdown entries. Point a step at the thing that
 ### 1. Extract the static testid surface from the installed build
 
 ```bash
-cd apps/<vertical>/studio-*            # any studio with sanity installed
+cd <your-studio>                       # any directory with sanity installed
 node -e 'console.log(require("./node_modules/sanity/package.json").version)'
 
 # all static data-testid literals, deduped
@@ -142,7 +142,7 @@ grep -roh '"data-testid": "pane-header"' node_modules/sanity/lib/_chunks-es/*.js
 
 ### 2. Confirm against the LIVE DOM (the source of truth for runtime uniqueness)
 
-Run the Studio (`pnpm dev:studio`), open a document, and paste into the browser
+Run the Studio (`pnpm dev`), open a document, and paste into the browser
 console:
 
 ```js
@@ -155,7 +155,9 @@ Object.entries([...document.querySelectorAll('[data-testid]')]
 The plugin also dumps available selectors automatically: when a tour step's
 target isn't found it logs `[tour] data-testid (chrome): …` (see
 `makeSelectorDumper` in `useTour.ts`). To force a dump, temporarily point a step
-at a bogus target like `chrome:__nope__` and run the tour.
+at a bogus chrome key like `__does_not_exist__` (any key not in the dropdown) and
+run the tour — an unrecognized key resolves to no selector, so the step is
+recorded as a miss and the dump fires.
 
 ### 3. Update + re-sync
 

@@ -15,12 +15,14 @@ import type { ResolvedProgressConfig, ResolvedTourConfig, TourDefinition } from 
 /**
  * Per-user tour progress (write side) + live resume/observe (read side).
  *
- * Progress docs live in a PRIVATE add-on dataset (default `comments`, the one
- * Sanity provisions for Comments/Tasks — private, complimentary, and already
- * paired to the project). We reach it with a `withConfig({ dataset })` client
- * rather than the `@internal` `useAddonDataset` hook, so this doesn't pin to a
- * Studio-internal API. Reads use the Live Content API (sync-tag refetch) for
- * sub-second updates without CDN polling.
+ * Progress docs live in the dataset `progress.dataset` resolves to — by default
+ * the studio's own (active) content dataset, a regular dataset governed by
+ * project roles. Point `progress.dataset` at a separate PRIVATE dataset to keep
+ * the captured user identity (name/email) out of a public content dataset. We
+ * reach the target with a `withConfig({ dataset })` client rather than the
+ * `@internal` `useAddonDataset` hook, so this doesn't pin to a Studio-internal
+ * API. Reads use the Live Content API (sync-tag refetch) for sub-second updates
+ * without CDN polling, and auto-reconnect with backoff if the stream errors.
  *
  * Hard rule: a failed progress write must NEVER break a tour. Every mutation is
  * fire-and-forget with a swallowed rejection.
@@ -51,6 +53,21 @@ const NOOP: TourProgressApi = {
 // Module-level so a dataset-level problem warns ONCE per dataset+status, not on
 // every tour step (writes) or live refetch (reads). Keyed `${dataset}:${status}`.
 const warnedDatasets = new Set<string>()
+
+// Warn ONCE if progress is on but no explicit dataset was set — user name/email
+// then land in the studio's content dataset, which is public on most web-facing
+// projects. Points the operator at `progress.dataset` (a private dataset).
+let warnedDefaultDatasetPII = false
+function warnDefaultDatasetPII(): void {
+  if (warnedDefaultDatasetPII) return
+  warnedDefaultDatasetPII = true
+  console.warn(
+    '[tour] progress is enabled without an explicit `progress.dataset`, so user ' +
+      'name/email are stored in the studio\'s content dataset. If that dataset is ' +
+      '(or may become) public, those records are world-readable — set ' +
+      '`progress.dataset` to a private dataset to keep identity data out of reach.'
+  )
+}
 
 function progressErrorStatus(err: unknown): number | undefined {
   const e = err as { statusCode?: number; response?: { statusCode?: number } }
@@ -102,6 +119,8 @@ function useProgressClient(progress: ResolvedProgressConfig) {
   const { enabled, dataset } = progress
   return useMemo(() => {
     if (!enabled) return null
+    // No explicit dataset → identity data goes in the content dataset; warn once.
+    if (!dataset) warnDefaultDatasetPII()
     const target = dataset ?? base.config().dataset
     return base.withConfig({ dataset: target, useCdn: false })
   }, [base, enabled, dataset])
@@ -178,8 +197,9 @@ export function useTourProgress(config: ResolvedTourConfig): TourProgressApi {
       recordMiss: (tour, runId, stepIndex) => {
         const step = tour.steps[stepIndex]
         if (!step) return
-        // Deterministic `_key` per step (see missedStepEntry) + the once-per-index
-        // guard in useTour mean this appends each skipped step at most once per play.
+        // The once-per-index guard in useTour appends each skipped step at most
+        // once per run; missedStepEntry's `_key` (index + timestamp) stays unique
+        // across a resume of the same play doc, so the array never has dup _keys.
         swallow(
           client
             .patch(idOf(tour, runId))
@@ -248,20 +268,61 @@ export function useLiveRows<T = unknown>(
     if (!live?.events) return () => {
       cancelled = true
     }
-    const sub = live.events().subscribe({
-      next: (event: { type?: string; id?: string; tags?: string[] }) => {
-        if (event?.type === 'message' && Array.isArray(event.tags) && event.tags.some((t) => syncTags.includes(t))) {
-          void refetch(event.id)
-        } else if (event?.type === 'restart') {
-          void refetch()
-        }
-      },
-      error: (err: unknown) => console.warn('[tour] live events error', err),
-    } as never) as { unsubscribe: () => void }
+
+    // Live subscription with auto-reconnect: a fatal stream error used to kill
+    // live updates permanently (UI silently froze on stale data until remount).
+    // Now we resubscribe with exponential backoff, and refetch on each attempt so
+    // we recover any events missed while disconnected.
+    let sub: { unsubscribe: () => void } | null = null
+    let retryTimer: ReturnType<typeof setTimeout> | null = null
+    let backoff = 1000
+    const MAX_BACKOFF = 30000
+
+    const subscribe = () => {
+      if (cancelled) return
+      try {
+        // `live.events` is guaranteed by the `!live?.events` guard above; the
+        // non-null assertions keep TS happy inside this nested closure.
+        sub = live!.events!().subscribe({
+          next: (event: { type?: string; id?: string; tags?: string[] }) => {
+            backoff = 1000 // healthy stream → reset backoff
+            if (event?.type === 'message' && Array.isArray(event.tags) && event.tags.some((t) => syncTags.includes(t))) {
+              void refetch(event.id)
+            } else if (event?.type === 'restart') {
+              void refetch()
+            }
+          },
+          error: (err: unknown) => {
+            if (cancelled) return
+            console.warn(`[tour] live events error; reconnecting in ${backoff}ms`, err)
+            try {
+              sub?.unsubscribe()
+            } catch {
+              /* already torn down */
+            }
+            sub = null
+            void refetch() // don't sit on stale data while disconnected
+            retryTimer = setTimeout(subscribe, backoff)
+            backoff = Math.min(backoff * 2, MAX_BACKOFF)
+          },
+        } as never) as { unsubscribe: () => void }
+      } catch (err) {
+        if (cancelled) return
+        console.warn(`[tour] live subscribe failed; retrying in ${backoff}ms`, err)
+        retryTimer = setTimeout(subscribe, backoff)
+        backoff = Math.min(backoff * 2, MAX_BACKOFF)
+      }
+    }
+    subscribe()
 
     return () => {
       cancelled = true
-      sub.unsubscribe()
+      if (retryTimer) clearTimeout(retryTimer)
+      try {
+        sub?.unsubscribe()
+      } catch {
+        /* already torn down */
+      }
     }
     // params is captured via paramsKey; query is a stable module constant.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -289,6 +350,7 @@ export function useResumeState(config: ResolvedTourConfig): Record<string, Resum
     runId?: string
     currentStep?: number
     totalSteps?: number
+    status?: string
   }>(config.progress, RESUME_QUERY, params)
   return useMemo(() => latestResumableByTour(rows), [rows])
 }
