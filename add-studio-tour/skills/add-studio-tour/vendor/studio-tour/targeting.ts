@@ -135,6 +135,15 @@ export function workspaceScopeFilter(scope: string | null): string {
   return ' && (!defined(workspaces) || count(workspaces) == 0 || $scope in workspaces)'
 }
 
+/**
+ * GROQ predicate restricting the launcher to tours targeted at the current
+ * user's project roles. A tour with no `roles` (or an empty array) is shown to
+ * everyone. Always applied; `$userRoles` must be passed (the user's role names).
+ * Visibility only — not access control: tour docs stay readable via the API.
+ */
+export const ROLE_FILTER =
+  ' && (!defined(roles) || count(roles) == 0 || count(roles[@ in $userRoles]) > 0)'
+
 export interface RawStep {
   title?: string
   /**
