@@ -39,9 +39,13 @@ export function TourLauncher() {
             aria-label={`Start tour, ${newTours.size} new`}
           >
             <Flex align="center" gap={2}>
-              <Text size={1}>
-                <PlayIcon />
-              </Text>
+              {/* Guarded: @sanity/icons v5 (Sanity 6) dropped root exports, so this
+                  is undefined there and rendering it would crash the navbar. */}
+              {PlayIcon ? (
+                <Text size={1}>
+                  <PlayIcon />
+                </Text>
+              ) : null}
               <Text size={1}>Start tour</Text>
               <Badge tone="primary" fontSize={0}>
                 {newTours.size} new
