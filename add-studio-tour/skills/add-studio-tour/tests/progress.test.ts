@@ -16,6 +16,8 @@ import {
   buildTourListQuery,
   latestResumableByTour,
   buildTourGroups,
+  seenStorageKey,
+  unseenTourIds,
   RESUME_QUERY,
   COMPLETED_QUERY,
   DASHBOARD_QUERY,
@@ -176,6 +178,30 @@ test('latestResumableByTour: prototype-named tour ids are handled (null-proto ma
   ])
   assert.equal(map.toString?.runId, 'r1')
   assert.deepEqual(Object.keys(map), ['toString'])
+})
+
+test('unseenTourIds: a tour is new until any play (any status) or a local start exists', () => {
+  const unseen = unseenTourIds(
+    ['a', 'b', 'c', 'd'],
+    [
+      { tourId: 'a', status: 'completed' } as { tourId: string },
+      { tourId: 'b', status: 'incomplete' } as { tourId: string },
+      {},
+    ],
+    ['c']
+  )
+  assert.deepEqual([...unseen], ['d'])
+})
+
+test('unseenTourIds: no plays and nothing local → every tour is new', () => {
+  assert.deepEqual([...unseenTourIds(['a', 'b'], [], [])], ['a', 'b'])
+})
+
+test('seenStorageKey: scoped per project, dataset and user', () => {
+  const key = seenStorageKey('p1', 'production', 'u1')
+  assert.equal(key, 'studio-tour:seen:p1:production:u1')
+  assert.notEqual(key, seenStorageKey('p1', 'staging', 'u1'))
+  assert.notEqual(key, seenStorageKey('p1', 'production', 'u2'))
 })
 
 test('buildTourGroups: lists every tour (even unplayed), groups plays by user, tallies status', () => {

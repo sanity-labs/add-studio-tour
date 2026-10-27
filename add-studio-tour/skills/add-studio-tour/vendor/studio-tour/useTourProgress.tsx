@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useClient, useCurrentUser, useWorkspace } from 'sanity'
 import {
   buildProgressDoc,
@@ -6,6 +6,8 @@ import {
   progressDocId,
   buildTourListQuery,
   latestResumableByTour,
+  seenStorageKey,
+  unseenTourIds,
   RESUME_QUERY,
   COMPLETED_QUERY,
   type ResumablePlay,
@@ -334,25 +336,91 @@ export function useLiveRows<T = unknown>(
 /** Re-exported for the launcher/controller — the shape used to drive "Resume". */
 export type ResumeInfo = ResumablePlay
 
+export interface PlayRow {
+  tourId?: string
+  runId?: string
+  currentStep?: number
+  totalSteps?: number
+  status?: string
+}
+
 /**
  * Live map of the current user's resumable tours, keyed by tourId → the most
  * recent unfinished play (see `latestResumableByTour`). Empty when disabled.
+ * Also returns the raw play rows so the "New" badge can reuse this subscription.
  */
-export function useResumeState(config: ResolvedTourConfig): Record<string, ResumeInfo> {
+export function useResumeState(config: ResolvedTourConfig): {
+  resume: Record<string, ResumeInfo>
+  plays: PlayRow[]
+  loading: boolean
+} {
   const user = useCurrentUser()
   const { typeName } = config.progress
   const params = useMemo(
     () => ({ type: typeName, user: user?.id ?? '__no-user__' }),
     [typeName, user?.id]
   )
-  const { rows } = useLiveRows<{
-    tourId?: string
-    runId?: string
-    currentStep?: number
-    totalSteps?: number
-    status?: string
-  }>(config.progress, RESUME_QUERY, params)
-  return useMemo(() => latestResumableByTour(rows), [rows])
+  const { rows, loading } = useLiveRows<PlayRow>(config.progress, RESUME_QUERY, params)
+  const resume = useMemo(() => latestResumableByTour(rows), [rows])
+  return { resume, plays: rows, loading }
+}
+
+function readSeen(key: string): string[] {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(key) ?? '[]')
+    return Array.isArray(parsed) ? parsed.filter((v) => typeof v === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Tours the current user hasn't started yet, for the launcher's "New" badge.
+ * Seen = any progress play for the tour, or a start recorded in localStorage
+ * (so it works with progress off). Empty while play rows load, so tours don't
+ * flash as new on every page load.
+ */
+export function useNewTours(
+  tours: TourDefinition[],
+  plays: PlayRow[],
+  playsLoading: boolean
+): { newTours: Set<string>; markSeen: (tourId: string) => void } {
+  const user = useCurrentUser()
+  const { projectId, dataset } = useWorkspace()
+  const key = seenStorageKey(projectId, dataset, user?.id ?? '__no-user__')
+  const [locallySeen, setLocallySeen] = useState<string[]>(() => readSeen(key))
+
+  useEffect(() => setLocallySeen(readSeen(key)), [key])
+
+  const markSeen = useCallback(
+    (tourId: string) => {
+      setLocallySeen((prev) => {
+        if (prev.includes(tourId)) return prev
+        const next = [...prev, tourId]
+        try {
+          localStorage.setItem(key, JSON.stringify(next))
+        } catch {
+          // storage blocked (private mode etc.) — badge just resets on reload
+        }
+        return next
+      })
+    },
+    [key]
+  )
+
+  const newTours = useMemo(
+    () =>
+      !user || playsLoading
+        ? new Set<string>()
+        : unseenTourIds(
+            tours.map((t) => t.id),
+            plays,
+            locallySeen
+          ),
+    [user, playsLoading, tours, plays, locallySeen]
+  )
+
+  return { newTours, markSeen }
 }
 
 /**
