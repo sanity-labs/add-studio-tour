@@ -1,5 +1,5 @@
 import { definePlugin } from 'sanity'
-import { JoystickIcon } from '@sanity/icons'
+import { JoystickIcon } from '@sanity/icons/Joystick'
 import { TourProvider } from './TourProvider'
 import { TourLauncher } from './TourLauncher'
 import { TourField } from './TourField'
