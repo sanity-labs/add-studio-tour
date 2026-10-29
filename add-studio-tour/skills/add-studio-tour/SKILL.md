@@ -57,7 +57,9 @@ unchanged behaviour).
 **Role-targeted tours** need no config: every tour has a **Show to roles** field.
 Leave it empty to show the tour to everyone; list project role names (e.g.
 `editor`, or a custom role) to show it only to users holding one of them. This
-stacks with workspace scoping. It is launcher visibility, not access control —
+stacks with workspace scoping. **Administrators always see every tour**, so
+they can run and check tours aimed at roles they don't hold; targeted tours
+show an "Only for: <roles>" line in the menu. It is launcher visibility, not access control —
 anyone who can read the dataset can still query the tour docs. The dashboard
 still lists every tour.
 

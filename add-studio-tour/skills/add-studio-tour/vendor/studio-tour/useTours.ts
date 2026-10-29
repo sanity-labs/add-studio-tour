@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useClient, useCurrentUser } from 'sanity'
-import { mapTour, ROLE_FILTER, workspaceScopeFilter, type RawTour } from './targeting'
+import { mapTour, roleFilter, workspaceScopeFilter, type RawTour } from './targeting'
 import type { TourDefinition } from './types'
 
 /**
@@ -16,16 +16,17 @@ import type { TourDefinition } from './types'
  * every tour of the type is returned.
  *
  * Tours tagged with `roles` only show to users holding one of those project
- * roles; untagged tours show to everyone.
+ * roles; untagged tours show to everyone. Administrators see every tour.
  *
  * Reads the `published` perspective (not drafts) so the launcher mirrors what a
  * prospect would see, and bypasses the CDN so freshly-published edits show on
  * reload.
  */
-const buildQuery = (scope: string | null) => `*[_type == $type${workspaceScopeFilter(scope)}${ROLE_FILTER}] | order(_createdAt asc){
+const buildQuery = (scope: string | null, userRoles: string[]) => `*[_type == $type${workspaceScopeFilter(scope)}${roleFilter(userRoles)}] | order(_createdAt asc){
   _id,
   label,
   description,
+  roles,
   steps[]{
     title,
     description,
@@ -54,14 +55,12 @@ export function useTours(
   useEffect(() => {
     let cancelled = false
     setLoading(true)
-    const params: Record<string, string | string[]> = {
-      type: typeName,
-      userRoles: roleKey ? roleKey.split(',') : [],
-    }
+    const userRoles = roleKey ? roleKey.split(',') : []
+    const params: Record<string, string | string[]> = { type: typeName, userRoles }
     if (workspaceScope) params.scope = workspaceScope
     client
       .withConfig({ perspective: 'published', useCdn: false })
-      .fetch<RawTour[]>(buildQuery(workspaceScope), params)
+      .fetch<RawTour[]>(buildQuery(workspaceScope, userRoles), params)
       .then((raw) => {
         if (!cancelled) setTours(raw.map((t) => mapTour(t, chromeSelectors)))
       })

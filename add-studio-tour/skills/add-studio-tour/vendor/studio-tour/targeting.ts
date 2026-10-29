@@ -138,11 +138,19 @@ export function workspaceScopeFilter(scope: string | null): string {
 /**
  * GROQ predicate restricting the launcher to tours targeted at the current
  * user's project roles. A tour with no `roles` (or an empty array) is shown to
- * everyone. Always applied; `$userRoles` must be passed (the user's role names).
+ * everyone. `$userRoles` must be passed (the user's role names).
  * Visibility only — not access control: tour docs stay readable via the API.
  */
 export const ROLE_FILTER =
   ' && (!defined(roles) || count(roles) == 0 || count(roles[@ in $userRoles]) > 0)'
+
+/**
+ * Administrators skip the role filter so they can run and check tours they
+ * target at roles they don't hold themselves.
+ */
+export function roleFilter(userRoles: string[]): string {
+  return userRoles.includes('administrator') ? '' : ROLE_FILTER
+}
 
 export interface RawStep {
   title?: string
@@ -165,6 +173,7 @@ export interface RawTour {
   _id: string
   label?: string
   description?: string
+  roles?: string[] | null
   steps?: RawStep[]
 }
 
@@ -181,6 +190,7 @@ export function mapTour(raw: RawTour, chromeSelectors: Record<string, string>): 
     label: raw.label ?? '(untitled tour)',
     // Tour-level description is plain text (rendered by React, which escapes it).
     description: typeof raw.description === 'string' ? raw.description : '',
+    roles: Array.isArray(raw.roles) ? raw.roles.filter((r) => typeof r === 'string') : [],
     steps: (raw.steps ?? []).map((s) => {
       const element = resolveTargetSelector(s.target, chromeSelectors)
       const hasTarget = !!(typeof s.target === 'string' && s.target.trim())

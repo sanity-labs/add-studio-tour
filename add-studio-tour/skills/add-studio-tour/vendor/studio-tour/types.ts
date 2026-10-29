@@ -56,6 +56,8 @@ export interface TourDefinition {
   id: string
   label: string
   description: string
+  /** Roles the tour is targeted at; empty → everyone. Shown to admins as a label. */
+  roles: string[]
   steps: TourStep[]
   /** driver.js config overrides. */
   driverConfig?: Partial<DriverConfig>
