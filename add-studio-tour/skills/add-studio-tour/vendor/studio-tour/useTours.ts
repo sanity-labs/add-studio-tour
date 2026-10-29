@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { useClient } from 'sanity'
-import { mapTour, workspaceScopeFilter, type RawTour } from './targeting'
+import { useClient, useCurrentUser } from 'sanity'
+import { mapTour, roleFilter, workspaceScopeFilter, type RawTour } from './targeting'
 import type { TourDefinition } from './types'
 
 /**
@@ -15,14 +15,18 @@ import type { TourDefinition } from './types'
  * to tours tagged for that workspace (plus untagged/global tours); otherwise
  * every tour of the type is returned.
  *
+ * Tours tagged with `roles` only show to users holding one of those project
+ * roles; untagged tours show to everyone. Administrators see every tour.
+ *
  * Reads the `published` perspective (not drafts) so the launcher mirrors what a
  * prospect would see, and bypasses the CDN so freshly-published edits show on
  * reload.
  */
-const buildQuery = (scope: string | null) => `*[_type == $type${workspaceScopeFilter(scope)}] | order(_createdAt asc){
+const buildQuery = (scope: string | null, userRoles: string[]) => `*[_type == $type${workspaceScopeFilter(scope)}${roleFilter(userRoles)}] | order(_createdAt asc){
   _id,
   label,
   description,
+  roles,
   steps[]{
     title,
     description,
@@ -42,17 +46,21 @@ export function useTours(
   workspaceScope: string | null = null
 ): { tours: TourDefinition[]; loading: boolean } {
   const client = useClient({ apiVersion: '2024-10-01' })
+  const currentUser = useCurrentUser()
+  // Joined to a string so a new-but-equal roles array doesn't refetch.
+  const roleKey = (currentUser?.roles ?? []).map((r) => r.name).sort().join(',')
   const [tours, setTours] = useState<TourDefinition[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     let cancelled = false
     setLoading(true)
-    const params: Record<string, string> = { type: typeName }
+    const userRoles = roleKey ? roleKey.split(',') : []
+    const params: Record<string, string | string[]> = { type: typeName, userRoles }
     if (workspaceScope) params.scope = workspaceScope
     client
       .withConfig({ perspective: 'published', useCdn: false })
-      .fetch<RawTour[]>(buildQuery(workspaceScope), params)
+      .fetch<RawTour[]>(buildQuery(workspaceScope, userRoles), params)
       .then((raw) => {
         if (!cancelled) setTours(raw.map((t) => mapTour(t, chromeSelectors)))
       })
@@ -66,7 +74,7 @@ export function useTours(
     return () => {
       cancelled = true
     }
-  }, [client, typeName, chromeSelectors, workspaceScope])
+  }, [client, typeName, chromeSelectors, workspaceScope, roleKey])
 
   return { tours, loading }
 }

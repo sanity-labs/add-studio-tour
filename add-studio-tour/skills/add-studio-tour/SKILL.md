@@ -54,6 +54,15 @@ workspace** and only used in the shared-dataset central-management model. Omit
 both for the default one-dataset-per-workspace setup (no extra field, no filter —
 unchanged behaviour).
 
+**Role-targeted tours** need no config: every tour has a **Show to roles** field.
+Leave it empty to show the tour to everyone; list project role names (e.g.
+`editor`, or a custom role) to show it only to users holding one of them. This
+stacks with workspace scoping. **Administrators always see every tour**, so
+they can run and check tours aimed at roles they don't hold; targeted tours
+show an "Only for: <roles>" line in the menu. It is launcher visibility, not access control —
+anyone who can read the dataset can still query the tour docs. The dashboard
+still lists every tour.
+
 Built-in chrome target keys (each maps to a Sanity `data-testid`) —
 **global:** `navbar`, `logo`, `create-button`, `search`, `perspective`,
 `releases`, `tasks`; **structure:** `sidebar`, `document-list`, `pane-create`
@@ -82,6 +91,7 @@ Authored tour document shape (what the launcher reads — **published perspectiv
   "_type": "<schemaTypeName>",
   "label": "Welcome to the Studio",
   "description": "Shown on the launcher card.", // plain text
+  "roles": ["editor"], // optional; project role names that see this tour. Omit/empty → everyone
   "steps": [
     {
       "_type": "tourStep",

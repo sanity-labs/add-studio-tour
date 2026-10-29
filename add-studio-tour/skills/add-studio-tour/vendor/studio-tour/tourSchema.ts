@@ -89,6 +89,15 @@ export function createTourType(config: ResolvedTourConfig) {
           ]
         : []),
       defineField({
+        name: 'roles',
+        title: 'Show to roles',
+        type: 'array',
+        of: [defineArrayMember({ type: 'string' })],
+        options: { layout: 'tags' },
+        description:
+          'Project role names (e.g. administrator, editor, or a custom role) that see this tour in the launcher. Leave empty to show it to everyone. Visibility only — not a permission boundary.',
+      }),
+      defineField({
         name: 'steps',
         title: 'Steps',
         type: 'array',

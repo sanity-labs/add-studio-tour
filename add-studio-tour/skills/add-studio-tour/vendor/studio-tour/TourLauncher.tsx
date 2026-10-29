@@ -71,6 +71,11 @@ export function TourLauncher() {
                           </Badge>
                         ) : null}
                       </Flex>
+                      {tour.roles.length > 0 ? (
+                        <Text size={0} muted>
+                          Only for: {tour.roles.join(', ')}
+                        </Text>
+                      ) : null}
                       {tour.description ? (
                         <Text size={1} muted>
                           {tour.description}
