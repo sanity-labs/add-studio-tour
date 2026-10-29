@@ -1,5 +1,7 @@
 import { Badge, Box, Button, Flex, Menu, MenuButton, MenuDivider, MenuItem, Spinner, Stack, Text } from '@sanity/ui'
-import { CloseIcon, PlayIcon, RetryIcon } from '@sanity/icons'
+import { CloseIcon } from '@sanity/icons/Close'
+import { PlayIcon } from '@sanity/icons/Play'
+import { RetryIcon } from '@sanity/icons/Retry'
 import { Fragment } from 'react'
 import { useTourContext } from './TourController'
 
@@ -98,6 +100,11 @@ export function TourLauncher() {
                           </Badge>
                         ) : null}
                       </Flex>
+                      {tour.roles.length > 0 ? (
+                        <Text size={0} muted>
+                          Only for: {tour.roles.join(', ')}
+                        </Text>
+                      ) : null}
                       {tour.description ? (
                         <Text size={1} muted>
                           {tour.description}

@@ -14,6 +14,8 @@ import {
   DEFAULT_CHROME_SELECTORS,
   mapTour,
   resolveTargetSelector,
+  ROLE_FILTER,
+  roleFilter,
   workspaceScopeFilter,
 } from '../vendor/studio-tour/targeting.ts'
 
@@ -206,4 +208,30 @@ test('workspaceScopeFilter: scoped → predicate incl. untagged/global tours', (
   )
   // composes into a valid-looking filter after `_type == $type`
   assert.ok(`*[_type == $type${f}]`.startsWith('*[_type == $type && ('))
+})
+
+test('roleFilter: administrators skip the role filter; everyone else gets it', () => {
+  assert.equal(roleFilter(['administrator']), '')
+  assert.equal(roleFilter(['editor', 'administrator']), '')
+  assert.equal(roleFilter(['editor']), ROLE_FILTER)
+  assert.equal(roleFilter([]), ROLE_FILTER)
+})
+
+test('mapTour: carries roles through (empty when untagged or malformed)', () => {
+  assert.deepEqual(mapTour({ _id: 't', roles: ['editor'] }, {}).roles, ['editor'])
+  assert.deepEqual(mapTour({ _id: 't' }, {}).roles, [])
+  assert.deepEqual(mapTour({ _id: 't', roles: null }, {}).roles, [])
+})
+
+test('ROLE_FILTER: untagged tours show to everyone; tagged ones need a matching role', () => {
+  assert.equal(
+    ROLE_FILTER,
+    ' && (!defined(roles) || count(roles) == 0 || count(roles[@ in $userRoles]) > 0)'
+  )
+  // composes after the workspace scope filter
+  assert.ok(
+    `*[_type == $type${workspaceScopeFilter('marketing')}${ROLE_FILTER}]`.endsWith(
+      'count(roles[@ in $userRoles]) > 0)]'
+    )
+  )
 })
