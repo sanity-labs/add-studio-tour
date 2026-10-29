@@ -252,7 +252,7 @@ it into the target Studio's source tree and install only the two runtime deps:
 # from the target Studio root
 mkdir -p src/plugins
 cp -R <path-to-this-skill>/vendor/studio-tour src/plugins/studio-tour
-pnpm add driver.js zustand @sanity/ui @sanity/icons   # match the project's package manager
+pnpm add driver.js zustand @sanity/ui @sanity/icons@^5   # match the project's package manager
 ```
 
 That's the whole install. Notes:
@@ -268,8 +268,14 @@ That's the whole install. Notes:
   `@sanity/icons` are imported by the launcher/dashboard; a Studio already pulls
   them in transitively via `sanity`, but **declaring them directly is required
   under a strict package manager (pnpm)** — otherwise the vendored files' bare
-  `@sanity/ui` / `@sanity/icons` imports don't resolve. They dedupe to the
-  versions `sanity` already uses, so no version pin is needed.
+  `@sanity/ui` / `@sanity/icons` imports don't resolve. `@sanity/ui` dedupes to
+  the version `sanity` already uses.
+- **`@sanity/icons` must be v5 (`@sanity/icons@^5`).** The plugin imports each
+  icon from its own subpath (`@sanity/icons/Play`), which only exists in v5. v5
+  also removed the root exports, so `import { PlayIcon } from '@sanity/icons'` is
+  `undefined` at runtime there and crashes on render. v5 only needs React 18/19,
+  so it works on Sanity 3–6 Studios. On Sanity 3–5, `sanity` keeps its own older
+  copy alongside it.
 - **Other peer deps are already satisfied** by any Studio: `sanity ^3 || ^4 || ^5`,
   `react 18 || 19`, `react-dom`, `styled-components ^6.1`.
 - **No CSS import or bundler config** — driver.js styles are inlined as a JS

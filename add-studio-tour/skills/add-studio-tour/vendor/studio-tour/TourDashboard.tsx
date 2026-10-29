@@ -1,5 +1,6 @@
 import { Badge, Box, Card, Container, Flex, Inline, Spinner, Stack, Text } from '@sanity/ui'
-import { ChevronDownIcon, ChevronRightIcon } from '@sanity/icons'
+import { ChevronDownIcon } from '@sanity/icons/ChevronDown'
+import { ChevronRightIcon } from '@sanity/icons/ChevronRight'
 import { useMemo, useState } from 'react'
 import { DASHBOARD_QUERY, DASHBOARD_MAX_ROWS, buildTourGroups, summarizeMisses } from './progress'
 import { useLiveRows, useActiveTours } from './useTourProgress'
