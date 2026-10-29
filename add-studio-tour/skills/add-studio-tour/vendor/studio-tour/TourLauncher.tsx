@@ -13,7 +13,7 @@ import { useTourContext } from './TourController'
  * stop button. Uses `mode="bleed"` to match the navbar's other action buttons.
  */
 export function TourLauncher() {
-  const { tours, loading, isRunning, run, stop, resume, completed } = useTourContext()
+  const { tours, loading, isRunning, run, stop, resume, completed, newTours } = useTourContext()
 
   if (isRunning) {
     return (
@@ -32,7 +32,32 @@ export function TourLauncher() {
   return (
     <MenuButton
       id="studio-tour-launcher"
-      button={<Button icon={PlayIcon} text="Start tour" mode="bleed" fontSize={1} padding={3} />}
+      button={
+        newTours.size > 0 ? (
+          // Children instead of `text` so the count badge sits inside the button.
+          <Button
+            mode="bleed"
+            padding={3}
+            aria-label={`Start tour, ${newTours.size} new`}
+          >
+            <Flex align="center" gap={2}>
+              {/* Guarded: @sanity/icons v5 (Sanity 6) dropped root exports, so this
+                  is undefined there and rendering it would crash the navbar. */}
+              {PlayIcon ? (
+                <Text size={1}>
+                  <PlayIcon />
+                </Text>
+              ) : null}
+              <Text size={1}>Start tour</Text>
+              <Badge tone="primary" fontSize={0}>
+                {newTours.size} new
+              </Badge>
+            </Flex>
+          </Button>
+        ) : (
+          <Button icon={PlayIcon} text="Start tour" mode="bleed" fontSize={1} padding={3} />
+        )
+      }
       popover={{ portal: true, placement: 'bottom-end' }}
       menu={
         <Menu>
@@ -68,6 +93,10 @@ export function TourLauncher() {
                         {completed.has(tour.id) ? (
                           <Badge tone="positive" mode="outline" fontSize={0}>
                             Completed
+                          </Badge>
+                        ) : newTours.has(tour.id) ? (
+                          <Badge tone="primary" fontSize={0}>
+                            New
                           </Badge>
                         ) : null}
                       </Flex>

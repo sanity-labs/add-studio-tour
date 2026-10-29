@@ -4,7 +4,13 @@ import { useWorkspace } from 'sanity'
 import { useRouter } from 'sanity/router'
 import { useTour, type RunOptions } from './useTour'
 import { useTours } from './useTours'
-import { useTourProgress, useResumeState, useCompletedTours, type ResumeInfo } from './useTourProgress'
+import {
+  useTourProgress,
+  useResumeState,
+  useCompletedTours,
+  useNewTours,
+  type ResumeInfo,
+} from './useTourProgress'
 import { useTourStore } from './store'
 import type { NavTarget, ResolvedTourConfig, TourDefinition } from './types'
 
@@ -36,6 +42,8 @@ interface TourContextValue {
   resume: Record<string, ResumeInfo>
   /** Tour ids the current user has completed. Empty when progress is off. */
   completed: Set<string>
+  /** Tour ids the current user hasn't started yet (progress plays + localStorage). */
+  newTours: Set<string>
 }
 
 const TourContext = createContext<TourContextValue | null>(null)
@@ -62,8 +70,9 @@ export function TourController({
   )
   const isRunning = useTourStore((s) => s.isRunning)
   const progress = useTourProgress(config)
-  const resume = useResumeState(config)
+  const { resume, plays, loading: playsLoading } = useResumeState(config)
   const completed = useCompletedTours(config)
+  const { newTours, markSeen } = useNewTours(tours, plays, playsLoading)
 
   const navigate = useCallback(
     (target: NavTarget) => {
@@ -98,11 +107,19 @@ export function TourController({
     [navigate, progress]
   )
 
-  const { run, stop } = useTour(lifecycle)
+  const { run: runTour, stop } = useTour(lifecycle)
+
+  const run = useCallback(
+    (tour: TourDefinition, options?: RunOptions) => {
+      markSeen(tour.id)
+      runTour(tour, options)
+    },
+    [markSeen, runTour]
+  )
 
   const value = useMemo<TourContextValue>(
-    () => ({ tours, loading, isRunning, run, stop, resume, completed }),
-    [tours, loading, isRunning, run, stop, resume, completed]
+    () => ({ tours, loading, isRunning, run, stop, resume, completed, newTours }),
+    [tours, loading, isRunning, run, stop, resume, completed, newTours]
   )
 
   return <TourContext.Provider value={value}>{children}</TourContext.Provider>

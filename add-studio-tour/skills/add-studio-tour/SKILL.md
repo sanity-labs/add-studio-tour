@@ -423,6 +423,17 @@ a content reset, re-point the tour's `openDocument` refs (or re-author the tour)
 to the new doc ids. Prefer referencing **stable, seeded ids** (e.g.
 `product-merino-crewneck`) over random ones so tours survive a reseed.
 
+**New tours are flagged in the launcher — no config needed.** When a user has
+tours they haven't started, the **Start tour** button shows an **"N new"** badge
+and each such tour gets a **New** pill in the menu. So when a developer ships a
+feature and publishes a tour for it, editors see it on their next load. A tour
+stops being new once the user starts it (Completed replaces New once finished).
+"Started" is read from the user's progress plays when `progress` is on (follows
+them across browsers) plus a per-browser `localStorage` record
+(`studio-tour:seen:<projectId>:<dataset>:<userId>`), so the badge works with
+progress off too — it just resets if the user clears site data or switches
+browser.
+
 ## Step 5b — Per-user progress & resume (optional)
 
 Off by default. Set `progress` on `tourPlugin` to track each user's progress
@@ -649,7 +660,8 @@ Three pure, dependency-free contracts are tested (no DOM/React/Sanity):
   `field:<name>` mapping (incl. nested paths), and `mapTour`'s
   `doc`/`openPath`/`openTool`/neither branches (incl. precedence).
 - **`tests/progress.test.ts`** → `progress.ts`: the id scheme, start-doc shape,
-  the queries, resume supersession, and the missed-step contract.
+  the queries, resume supersession, the missed-step contract, and the
+  "New" badge's unseen-tour rule.
 - **`tests/portableText.test.ts`** → `portableText.ts`: the safe HTML serializer
   (escaping, mark/list rendering, and the **XSS** cases — no author markup executes).
 

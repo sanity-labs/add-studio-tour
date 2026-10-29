@@ -221,6 +221,30 @@ export function latestResumableByTour(
   return map
 }
 
+/**
+ * localStorage key for the tour ids this user has started in this browser.
+ * Scoped per project + dataset + user so workspaces and accounts don't share it.
+ * Backs the "New" badge when progress is off (or before progress rows load).
+ */
+export function seenStorageKey(projectId: string, dataset: string, userId: string): string {
+  return `studio-tour:seen:${projectId}:${dataset}:${userId}`
+}
+
+/**
+ * Tour ids the user hasn't started yet — drives the launcher's "New" badge.
+ * Any progress play (any status) or a local start counts as seen, so a tour
+ * stays "new" until the user opens it, not just until they finish it.
+ */
+export function unseenTourIds(
+  tourIds: string[],
+  playRows: Array<{ tourId?: string }>,
+  locallySeen: Iterable<string>
+): Set<string> {
+  const seen = new Set<string>(locallySeen)
+  for (const row of playRows) if (row?.tourId) seen.add(row.tourId)
+  return new Set(tourIds.filter((id) => !seen.has(id)))
+}
+
 export interface ProgressUserGroup {
   key: string
   name: string
