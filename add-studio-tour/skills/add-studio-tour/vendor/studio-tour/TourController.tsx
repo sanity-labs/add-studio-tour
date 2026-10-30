@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useMemo } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo } from 'react'
 import type { ReactNode } from 'react'
 import { useWorkspace } from 'sanity'
 import { useRouter } from 'sanity/router'
@@ -11,6 +11,7 @@ import {
   useNewTours,
   type ResumeInfo,
 } from './useTourProgress'
+import { RevealRegistryContext } from './revealRegistry'
 import { useTourStore } from './store'
 import type { NavTarget, ResolvedTourConfig, TourDefinition } from './types'
 
@@ -69,6 +70,12 @@ export function TourController({
     config.workspaceScope
   )
   const isRunning = useTourStore((s) => s.isRunning)
+  const reveal = useContext(RevealRegistryContext)
+
+  // Collapse whatever the tour expanded, however it ended (finish, close, stop).
+  useEffect(() => {
+    if (!isRunning) reveal?.restore()
+  }, [isRunning, reveal])
   const progress = useTourProgress(config)
   const { resume, plays, loading: playsLoading } = useResumeState(config)
   const completed = useCompletedTours(config)
@@ -98,13 +105,16 @@ export function TourController({
       onBeforeStep: async (navigateTo: NavTarget | undefined) => {
         if (navigateTo) navigate(navigateTo)
       },
+      onRevealField: async (fieldPath: string, isCancelled: () => boolean) => {
+        await reveal?.reveal(fieldPath, isCancelled)
+      },
       onStart: progress.start,
       onStep: progress.advance,
       onComplete: progress.complete,
       onLeave: progress.leave,
       onMissedStep: progress.recordMiss,
     }),
-    [navigate, progress]
+    [navigate, progress, reveal]
   )
 
   const { run: runTour, stop } = useTour(lifecycle)

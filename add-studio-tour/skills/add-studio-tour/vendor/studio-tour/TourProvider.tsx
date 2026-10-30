@@ -1,6 +1,7 @@
 import { useRef } from 'react'
 import type { ReactNode } from 'react'
 import { TourController } from './TourController'
+import { createRevealRegistry, RevealRegistryContext, type RevealRegistry } from './revealRegistry'
 import { createTourStore, TourStoreContext, type TourStore } from './store'
 import type { ResolvedTourConfig } from './types'
 
@@ -24,10 +25,14 @@ export function TourProvider({
   // zero-arg overload (`useRef<T>()`).
   const storeRef = useRef<TourStore | undefined>(undefined)
   if (!storeRef.current) storeRef.current = createTourStore()
+  const revealRef = useRef<RevealRegistry | undefined>(undefined)
+  if (!revealRef.current) revealRef.current = createRevealRegistry()
 
   return (
     <TourStoreContext.Provider value={storeRef.current}>
-      <TourController config={config}>{children}</TourController>
+      <RevealRegistryContext.Provider value={revealRef.current}>
+        <TourController config={config}>{children}</TourController>
+      </RevealRegistryContext.Provider>
     </TourStoreContext.Provider>
   )
 }
