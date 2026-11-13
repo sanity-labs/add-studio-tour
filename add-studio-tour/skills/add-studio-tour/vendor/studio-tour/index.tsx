@@ -3,6 +3,7 @@ import { JoystickIcon } from '@sanity/icons/Joystick'
 import { TourProvider } from './TourProvider'
 import { TourLauncher } from './TourLauncher'
 import { TourField } from './TourField'
+import { TourInput } from './revealRegistry'
 import { TourDashboard } from './TourDashboard'
 import { createTourType, DEFAULT_CHROME_SELECTORS } from './tourSchema'
 import { createTourProgressType } from './progressSchema'
@@ -92,6 +93,9 @@ export const studioTourPlugin = definePlugin<StudioTourConfig | void>((config) =
     form: {
       components: {
         field: TourField,
+        // Registers object inputs so steps can expand collapsed fieldsets/objects
+        // and switch groups to reach their target field (see revealRegistry).
+        input: TourInput,
       },
     },
     studio: {

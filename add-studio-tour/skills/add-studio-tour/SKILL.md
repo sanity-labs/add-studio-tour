@@ -73,6 +73,14 @@ the step an `openPath` to that pane first, see the list-pane lesson below);
 `show-more` (pane `···` overflow menu — Inspect, Review changes, Incoming
 references). A step's `target` is one of these keys **or** `field:<name>`
 (resolves to the stable `data-tour-field="<name>"` attribute this plugin owns).
+A `field:` step reaches fields the form isn't rendering yet: before the step,
+the plugin expands a **collapsed fieldset**, expands a **collapsed object
+field** (each level of a nested path like `field:seo.metaTitle`), or switches
+to the field's **group tab**. When the tour ends (finished, closed or
+stopped), it collapses and switches back whatever it opened. This uses the
+form's public callbacks (`onFieldSetExpand`, `onFieldExpand`,
+`onFieldGroupSelect`) through a global `form.components.input` wrapper. Fields
+that are `hidden`, or that sit inside array items, still can't be reached.
 
 Each dropdown option is tagged with its **origin** so authors can tell built-in
 targets apart from custom ones: **`— Sanity`** (native Studio testid, shipped in
@@ -589,17 +597,14 @@ chrome, add/override `chromeSelectors` rather than editing the plugin.
 
 Targeting lessons learned (Sanity v5):
 
-- **Fields inside a non-default field group aren't targetable.** A field with a
-  `group` (e.g. `group: GROUP.SEO`) renders behind a tab and is NOT in the DOM
-  until that tab is the active one, so `field:seo` resolves to nothing and the
-  step is silently skipped — even though the field "exists" in the schema. Fixes,
-  in order of preference: target only fields in the **default** group; or drop
-  `groups` on the doc types a tour highlights (often the right call for a small
-  demo doc — it also removes empty inherited tabs); or split the highlight into a
-  copy-only step. The selector dump (Step 6) now also lists the field-group/view
-  tabs present, so a `field:` miss caused by an inactive tab is easy to spot.
-  (Remember: `fieldTargets` only fills the authoring dropdown — at runtime any
-  *visible* field path works, including nested `field:seo.metaTitle`.)
+- **Fields behind a group tab, a collapsed fieldset or a collapsed object are
+  revealed automatically** (see the targets section above). The step still
+  needs the document open, so give it an `openDocument`. A field that's
+  `hidden` by a callback, or inside an array item, is still skipped. The
+  selector dump (Step 6) lists the field-group/view tabs present, so a miss
+  like that is easy to spot. (Remember: `fieldTargets` only fills the
+  authoring dropdown. At runtime any field path works, including nested
+  `field:seo.metaTitle`.)
 - **Field decorations are not field-targetable.** Things rendered via
   `renderMembers` (e.g. `defineIncomingReferenceDecoration`) are NOT wrapped by
   the plugin's `TourField`, so they never get a `data-tour-field` and have no
@@ -655,17 +660,19 @@ Targeting lessons learned (Sanity v5):
 
 ## Tests (maintainers)
 
-Three pure, dependency-free contracts are tested (no DOM/React/Sanity):
+Four pure, dependency-free contracts are tested (no DOM/React/Sanity):
 - **`tests/targeting.test.ts`** → `targeting.ts`: chrome-key resolution,
   `field:<name>` mapping (incl. nested paths), and `mapTour`'s
   `doc`/`openPath`/`openTool`/neither branches (incl. precedence).
 - **`tests/progress.test.ts`** → `progress.ts`: the id scheme, start-doc shape,
   the queries, resume supersession, the missed-step contract, and the
   "New" badge's unseen-tour rule.
+- **`tests/reveal.test.ts`** → `reveal.ts`: which callback reveals a field
+  hidden by a collapsed fieldset, a collapsed object or an unselected group.
 - **`tests/portableText.test.ts`** → `portableText.ts`: the safe HTML serializer
   (escaping, mark/list rendering, and the **XSS** cases — no author markup executes).
 
-Run all three with **`tsx`**:
+Run them all with **`tsx`**:
 
 ```sh
 npx tsx --test tests/*.test.ts

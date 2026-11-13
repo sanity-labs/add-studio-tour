@@ -139,6 +139,11 @@ function makeSelectorDumper() {
 // per-play doc. A fresh run mints a new runId; a resume reuses the existing one.
 export interface TourLifecycle {
   onBeforeStep?: (navigateTo: NavTarget | undefined, stepIndex: number) => Promise<void> | void
+  /**
+   * Called before a `field:<path>` step settles, to uncover a field the form
+   * isn't rendering (collapsed fieldset/object, unselected group).
+   */
+  onRevealField?: (fieldPath: string, isCancelled: () => boolean) => Promise<void>
   /** Fired once when a tour starts fresh (not on resume). Good for createOrReplace. */
   onStart?: (tour: TourDefinition, runId: string) => void
   /** Fired each time a step is shown, with its index. */
@@ -260,6 +265,11 @@ export function useTour(options?: TourLifecycle) {
           if (step.navigateTo && options?.onBeforeStep) {
             await options.onBeforeStep(step.navigateTo, i)
             // Bailed: the run was stopped/closed/superseded while navigating.
+            if (runGenRef.current !== myGen) return
+          }
+
+          if (step.target?.startsWith('field:') && options?.onRevealField) {
+            await options.onRevealField(step.target.slice('field:'.length), () => runGenRef.current !== myGen)
             if (runGenRef.current !== myGen) return
           }
 
